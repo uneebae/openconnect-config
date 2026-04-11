@@ -1,0 +1,321 @@
+{
+  "client": "Ethswitch",
+  "metadata": {
+    "version": "1.0",
+    "createdBy": "Paysys Labs",
+    "createdDate": "2024-04-10",
+    "environment": "production",
+    "description": "Ethswitch Payment Gateway Integration for Paysys Labs"
+  },
+  "service": {
+    "baseUrl": "https://api.ethswitch.com/v1",
+    "type": "payment-gateway",
+    "serviceName": "Ethswitch Payment Gateway",
+    "documentation": "https://api.ethswitch.com/docs",
+    "supportEmail": "integration@ethswitch.com"
+  },
+  "endpoint": {
+    "paymentEndpoint": {
+      "id": 10,
+      "method": "POST",
+      "endpointTemplate": "/transactions/transfer",
+      "fullUrl": "https://api.ethswitch.com/v1/transactions/transfer",
+      "requestFormat": "JSON",
+      "responseFormat": "JSON",
+      "dataTemplate": "{\"fromAccount\":\"{FROM_ACCOUNT}\",\"toAccount\":\"{TO_ACCOUNT}\",\"amount\":\"{AMOUNT}\",\"currency\":\"PKR\",\"remarks\":\"{REMARKS}\"}",
+      "requestHeaders": {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer {TOKEN}",
+        "X-Client-ID": "paysys_ethswitch",
+        "X-Request-ID": "{CORRELATION_ID}"
+      },
+      "connectionTimeout": 5000,
+      "readTimeout": 30000,
+      "responseCodePath": "$.responseCode",
+      "responseIncludePaths": "$.rrn,$.description,$.stan,$.timestamp",
+      "type": "PAYMENT",
+      "reversalType": "FULL_REVERSAL",
+      "guaranteed": true,
+      "variableFields": ["FROM_ACCOUNT", "TO_ACCOUNT", "AMOUNT", "REMARKS"],
+      "exReqResLog": true,
+      "tokenConfigId": 5,
+      "tokenRequestId": 3
+    },
+    "tokenEndpoint": {
+      "id": 3,
+      "method": "POST",
+      "endpointTemplate": "/auth/token",
+      "fullUrl": "https://api.ethswitch.com/v1/auth/token",
+      "requestFormat": "FORM",
+      "responseFormat": "JSON",
+      "dataTemplate": "grant_type=client_credentials&client_id={CLIENT_ID}&client_secret={CLIENT_SECRET}",
+      "requestHeaders": {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      "connectionTimeout": 5000,
+      "readTimeout": 10000,
+      "type": "TOKEN",
+      "exReqResLog": false
+    }
+  },
+  "authentication": {
+    "type": "OAuth2",
+    "flow": "client_credentials",
+    "tokenField": "$.access_token",
+    "expiryField": "$.expires_in",
+    "expiryType": "SECONDS",
+    "clientId": "YOUR_ETHSWITCH_CLIENT_ID",
+    "clientSecret": "YOUR_ETHSWITCH_CLIENT_SECRET",
+    "tokenEndpoint": "/auth/token",
+    "currentExpiryEpoch": 0,
+    "notes": "Credentials should be stored in Azure Key Vault or AWS Secrets Manager"
+  },
+  "fieldMappings": [
+    {
+      "id": 1001,
+      "tranId": 501,
+      "paramName": "fromAccount",
+      "value": "{FROM_ACCOUNT}",
+      "isMandatory": "Y",
+      "maxLength": 20,
+      "regex": "^[0-9]{11,20}$",
+      "logParameter": 1,
+      "logColumn": "identifier",
+      "isBatch": false,
+      "isEscape": false,
+      "paramPriority": 1,
+      "description": "Source account number - 11-20 digits, typically IBAN or local account"
+    },
+    {
+      "id": 1002,
+      "tranId": 501,
+      "paramName": "toAccount",
+      "value": "{TO_ACCOUNT}",
+      "isMandatory": "Y",
+      "maxLength": 20,
+      "regex": "^[0-9]{11,20}$",
+      "logParameter": 1,
+      "logColumn": "to_account",
+      "isBatch": false,
+      "isEscape": false,
+      "paramPriority": 2,
+      "description": "Destination account number - 11-20 digits"
+    },
+    {
+      "id": 1003,
+      "tranId": 501,
+      "paramName": "amount",
+      "value": "{AMOUNT}",
+      "isMandatory": "Y",
+      "maxLength": 15,
+      "regex": "^[0-9]+(\\.[0-9]{1,2})?$",
+      "logParameter": 1,
+      "logColumn": "amount",
+      "isBatch": false,
+      "isEscape": false,
+      "paramPriority": 3,
+      "description": "Transaction amount - decimal format with max 2 decimal places"
+    },
+    {
+      "id": 1004,
+      "tranId": 501,
+      "paramName": "currency",
+      "value": "PKR",
+      "isMandatory": "Y",
+      "maxLength": 3,
+      "regex": "^[A-Z]{3}$",
+      "logParameter": 0,
+      "logColumn": null,
+      "isBatch": false,
+      "isEscape": false,
+      "paramPriority": 4,
+      "description": "Currency code - ISO 4217 (PKR for Pakistan Rupee)"
+    },
+    {
+      "id": 1005,
+      "tranId": 501,
+      "paramName": "remarks",
+      "value": "{REMARKS}",
+      "isMandatory": "N",
+      "maxLength": 100,
+      "regex": "",
+      "logParameter": 0,
+      "logColumn": null,
+      "isBatch": false,
+      "isEscape": true,
+      "paramPriority": 5,
+      "description": "Optional transaction remarks/memo"
+    }
+  ],
+  "responseCodeMappings": [
+    {
+      "id": 200,
+      "configId": 10,
+      "matchCode": "00",
+      "ourCode": "000",
+      "ourDescription": "Transaction Approved",
+      "severity": "success"
+    },
+    {
+      "id": 201,
+      "configId": 10,
+      "matchCode": "01",
+      "ourCode": "100",
+      "ourDescription": "Insufficient Funds",
+      "severity": "warning"
+    },
+    {
+      "id": 202,
+      "configId": 10,
+      "matchCode": "03",
+      "ourCode": "101",
+      "ourDescription": "Invalid Account Number",
+      "severity": "warning"
+    },
+    {
+      "id": 203,
+      "configId": 10,
+      "matchCode": "05",
+      "ourCode": "102",
+      "ourDescription": "Transaction Declined by Bank",
+      "severity": "warning"
+    },
+    {
+      "id": 204,
+      "configId": 10,
+      "matchCode": "14",
+      "ourCode": "103",
+      "ourDescription": "Invalid Card/Account Number",
+      "severity": "warning"
+    },
+    {
+      "id": 205,
+      "configId": 10,
+      "matchCode": "51",
+      "ourCode": "104",
+      "ourDescription": "Exceeds Withdrawal Limit",
+      "severity": "warning"
+    },
+    {
+      "id": 206,
+      "configId": 10,
+      "matchCode": "96",
+      "ourCode": "500",
+      "ourDescription": "System Error - Please Retry",
+      "severity": "error"
+    },
+    {
+      "id": 207,
+      "configId": 10,
+      "matchCode": "TIMEOUT",
+      "ourCode": "503",
+      "ourDescription": "Ethswitch Service Timeout",
+      "severity": "error"
+    },
+    {
+      "id": 208,
+      "configId": 10,
+      "matchCode": "*",
+      "ourCode": "999",
+      "ourDescription": "Unknown Error - Contact Support",
+      "severity": "error"
+    }
+  ],
+  "routing": {
+    "tranId": 501,
+    "tranType": "FUND_TRANSFER",
+    "queueIn": "ETHSWITCH_API",
+    "queueType": "REQUEST",
+    "fromIp": "0.0.0.0",
+    "hostId": 1,
+    "responseType": "JSON",
+    "safQueue": "SAF_ETHSWITCH_TRANSFER",
+    "description": "Route for all Ethswitch fund transfer requests"
+  },
+  "testing": {
+    "happyPathTest": {
+      "description": "Valid fund transfer",
+      "input": {
+        "tranType": "FUND_TRANSFER",
+        "queueIn": "ETHSWITCH_API",
+        "fromAccount": "03001234567",
+        "toAccount": "03009876543",
+        "amount": "5000.00",
+        "remarks": "Test transfer"
+      },
+      "expectedResponse": {
+        "responseCode": "00",
+        "description": "Transaction Approved",
+        "rrn": "RRN202404010001"
+      }
+    },
+    "errorCases": [
+      {
+        "description": "Insufficient funds",
+        "input": { "amount": "999999999.99" },
+        "expectedCode": "100",
+        "expectedDescription": "Insufficient Funds"
+      },
+      {
+        "description": "Invalid account format",
+        "input": { "fromAccount": "INVALID" },
+        "expectedCode": "101",
+        "expectedDescription": "Invalid Account Number"
+      },
+      {
+        "description": "API timeout",
+        "delaySeconds": 35,
+        "expectedCode": "503",
+        "expectedDescription": "Ethswitch Service Timeout"
+      }
+    ]
+  },
+  "monitoring": {
+    "metricsToTrack": [
+      "average_response_time",
+      "success_rate",
+      "timeout_rate",
+      "error_codes_distribution",
+      "token_refresh_frequency"
+    ],
+    "alertThresholds": {
+      "responseTime": {
+        "warning": 15000,
+        "critical": 30000
+      },
+      "errorRate": {
+        "warning": 0.05,
+        "critical": 0.10
+      },
+      "successRate": {
+        "warning": 0.95,
+        "critical": 0.90
+      }
+    },
+    "dashboardQuery": "SELECT CAST(DATEPART(HOUR, client_req_datetime) AS VARCHAR) + ':00' as hour, COUNT(*) as total, SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) as successful FROM transactions_log WHERE tran_type = 'FUND_TRANSFER' AND client_req_datetime > DATEADD(HOUR, -24, GETDATE()) GROUP BY DATEPART(HOUR, client_req_datetime) ORDER BY hour DESC"
+  },
+  "rollbackPlan": {
+    "steps": [
+      "BACKUP DATABASE [OpenConnect] TO DISK = 'backup.bak'",
+      "DELETE FROM ws_response_definition WHERE config_id = 10 AND id > 206",
+      "DELETE FROM tran_req_map WHERE tran_id = 501 AND id > 1005",
+      "DELETE FROM ws_endpoint_config WHERE id IN (3, 10)",
+      "DELETE FROM ws_token_config WHERE id = 5",
+      "DELETE FROM ws_config WHERE id = 1"
+    ],
+    "estimatedDowntime": "5-10 minutes"
+  },
+  "notes": {
+    "created": "2024-04-10",
+    "version": "1.0",
+    "status": "production_ready",
+    "nextReview": "2024-07-10",
+    "owner": "Uneeb @ Paysys Labs",
+    "reviewers": ["Karim (CEO)", "Product Team"],
+    "knownLimitations": [
+      "Ethswitch API has 30-second timeout for large transfers",
+      "Token refresh happens automatically - no manual intervention needed",
+      "SAF queue processes once per minute - batch retries in high volume"
+    ]
+  }
+}
