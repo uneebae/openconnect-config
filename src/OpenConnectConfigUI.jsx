@@ -113,6 +113,8 @@ const OpenConnectConfigUI = () => {
   const [dbResults, setDbResults] = useState(null);
   const [verifyData, setVerifyData] = useState(null);
   const [showVerify, setShowVerify] = useState(false);
+  const [dbMode, setDbMode] = useState('sqlite');
+  const [dbInfo, setDbInfo] = useState(null);
 
   const showToast = (message, type = 'info') => setToast({ message, type });
 
@@ -121,8 +123,14 @@ const OpenConnectConfigUI = () => {
     const checkHealth = async () => {
       try {
         const resp = await fetch(`${API_BASE}/health`);
-        if (resp.ok) setBackendStatus('connected');
-        else setBackendStatus('error');
+        if (resp.ok) {
+          const data = await resp.json();
+          setBackendStatus(data.status === 'ok' ? 'connected' : 'error');
+          setDbMode(data.mode || 'sqlite');
+          setDbInfo(data);
+        } else {
+          setBackendStatus('error');
+        }
       } catch {
         setBackendStatus('disconnected');
       }
@@ -664,23 +672,36 @@ const OpenConnectConfigUI = () => {
         </button>
       </div>
 
-      {/* Demo Database */}
+      {/* Database Testing */}
       <div className="border-t border-slate-700/50 pt-6">
         <h4 className="font-semibold text-slate-200 mb-4 flex items-center gap-2 text-sm">
-          <Database className="w-4 h-4 text-indigo-400" /> Demo Database Testing
+          <Database className="w-4 h-4 text-indigo-400" />
+          Database Testing
+          {dbMode === 'mssql' && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 ml-1">LIVE SQL Server</span>
+          )}
         </h4>
-        <div className="flex items-start gap-3 p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 mb-4">
-          <Database className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
+        <div className={`flex items-start gap-3 p-4 rounded-xl mb-4 ${dbMode === 'mssql' ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-indigo-500/10 border border-indigo-500/20'}`}>
+          <Database className={`w-5 h-5 flex-shrink-0 mt-0.5 ${dbMode === 'mssql' ? 'text-blue-400' : 'text-indigo-400'}`} />
           <div>
-            <p className="text-sm text-indigo-300">Execute generated SQL against local SQLite demo database, then verify data.</p>
-            <p className="text-xs text-indigo-400/60 mt-1">Requires: <code className="bg-indigo-500/20 px-1.5 rounded">npm run server</code></p>
+            {dbMode === 'mssql' ? (
+              <>
+                <p className="text-sm text-blue-300">Connected to <strong>{dbInfo?.database || 'SQL Server'}</strong> at <code className="bg-blue-500/20 px-1.5 rounded text-xs">{dbInfo?.server || ''}</code></p>
+                <p className="text-xs text-blue-400/60 mt-1">SQL will execute directly on your production SQL Server database.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-indigo-300">Execute generated SQL against local SQLite demo database, then verify data.</p>
+                <p className="text-xs text-indigo-400/60 mt-1">Requires: <code className="bg-indigo-500/20 px-1.5 rounded">npm run server</code></p>
+              </>
+            )}
           </div>
         </div>
         <div className="flex gap-3 mb-4">
           <button onClick={executeInDemoDB} disabled={dbStatus === 'executing'}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600/90 text-white rounded-xl hover:bg-emerald-500 transition font-medium text-sm disabled:opacity-50">
             {dbStatus === 'executing' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            {dbStatus === 'executing' ? 'Executing...' : 'Execute in Demo DB'}
+            {dbStatus === 'executing' ? 'Executing...' : (dbMode === 'mssql' ? 'Execute on SQL Server' : 'Execute in Demo DB')}
           </button>
           <button onClick={verifyDemoDB}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600/90 text-white rounded-xl hover:bg-indigo-500 transition font-medium text-sm">
@@ -875,8 +896,13 @@ const OpenConnectConfigUI = () => {
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/50 border border-slate-700/50">
                 <span className={`w-2 h-2 rounded-full ${backendStatus === 'connected' ? 'bg-emerald-400 pulse-dot' : backendStatus === 'checking' ? 'bg-amber-400 pulse-dot' : 'bg-red-400'}`} />
                 <span className="text-xs text-slate-400">
-                  {backendStatus === 'connected' ? 'Backend Connected' : backendStatus === 'checking' ? 'Checking...' : 'Backend Offline'}
+                  {backendStatus === 'connected' ? 'Connected' : backendStatus === 'checking' ? 'Checking...' : 'Offline'}
                 </span>
+                {backendStatus === 'connected' && (
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${dbMode === 'mssql' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-600/30 text-slate-400 border border-slate-600/30'}`}>
+                    {dbMode === 'mssql' ? 'SQL Server' : 'SQLite'}
+                  </span>
+                )}
               </div>
               <button onClick={() => { setShowSavedConfigs(true); fetchSavedConfigs(); }}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:bg-slate-700/50 transition text-xs text-slate-400 hover:text-slate-200">
