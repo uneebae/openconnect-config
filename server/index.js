@@ -1,55 +1,85 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { getDb, initSchema, resetDb, seedDemoData } from './db.js';
-import * as mssqlDb from './mssql-db.js';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { getDb, initSchema, resetDb, seedDemoData, encryptPassword, decryptPassword } from './db.js';
+import * as dynamicDb from './dynamic-db.js';
 
 const app = express();
 const PORT = process.env.PORT || 3002;
-const DB_MODE = process.env.DB_MODE || 'sqlite'; // 'sqlite' or 'mssql'
+const IS_PROD = process.env.NODE_ENV === 'production';
 
-app.use(cors());
-app.use(express.json({ limit: '1mb' }));
+// ─── Security Middleware ─────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: false, // handled by frontend
+  crossOriginEmbedderPolicy: false,
+}));
+
+app.use(cors({
+  origin: IS_PROD
+    ? (process.env.CORS_ORIGIN || 'http://localhost:3000')
+    : true,
+  credentials: true,
+}));
+
+app.use(express.json({ limit: '512kb' }));
+
+// ─── Rate Limiting ───────────────────────────────
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many requests. Try again later.' },
+});
+
+const connectLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { success: false, error: 'Too many connection attempts. Try again later.' },
+});
+
+app.use('/api/', apiLimiter);
+app.use('/api/db/connect', connectLimiter);
+
+// ─── Request Logging ─────────────────────────────
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - start;
+    const status = res.statusCode;
+    const color = status >= 400 ? '\x1b[31m' : status >= 300 ? '\x1b[33m' : '\x1b[32m';
+    console.log(`  ${color}${req.method}\x1b[0m ${req.originalUrl} → ${status} (${ms}ms)`);
+  });
+  next();
+});
 
 // ─── Initialization ──────────────────────────────
 async function init() {
-  // SQLite always initializes (for saved_configs)
+  // SQLite always initializes (for saved_configs + db_connections)
   initSchema();
   seedDemoData();
-
-  if (DB_MODE === 'mssql') {
-    const status = await mssqlDb.testConnection();
-    if (status.connected) {
-      console.log(`  ✓ SQL Server connected: ${status.server} / ${status.database}`);
-    } else {
-      console.error(`  ✗ SQL Server connection failed: ${status.error}`);
-      console.log('  Falling back to SQLite demo mode');
-    }
-  } else {
-    console.log('  ✓ SQLite demo mode');
-  }
-}
-
-// ─── Helper: is MSSQL active? ────────────────────
-function isMssql() {
-  return DB_MODE === 'mssql';
+  console.log('  ✓ SQLite local storage ready');
 }
 
 // ─── Health Check ────────────────────────────────
 app.get('/api/health', async (req, res) => {
-  if (isMssql()) {
-    const status = await mssqlDb.testConnection();
+  const dbStatus = dynamicDb.getStatus();
+  if (dbStatus.connected) {
+    const test = await dynamicDb.testConnection();
     res.json({
-      status: status.connected ? 'ok' : 'degraded',
-      mode: 'mssql',
-      server: process.env.MSSQL_HOST,
-      database: process.env.MSSQL_DATABASE,
-      connected: status.connected,
-      error: status.error || null,
+      status: test.connected ? 'ok' : 'degraded',
+      mode: dbStatus.type,
+      server: dbStatus.host,
+      port: dbStatus.port,
+      database: dbStatus.database,
+      connected: test.connected,
+      error: test.connected ? null : test.error,
       tables: 6
     });
   } else {
-    res.json({ status: 'ok', mode: 'sqlite', database: 'demo.db', tables: 7 });
+    res.json({ status: 'ok', mode: 'sqlite', database: 'demo.db', tables: 7, connected: true });
   }
 });
 
@@ -60,24 +90,36 @@ app.post('/api/execute-sql', async (req, res) => {
     return res.status(400).json({ error: 'Provide { statements: [...] }' });
   }
 
+  // Limit number of statements to prevent resource exhaustion
+  if (statements.length > 200) {
+    return res.status(400).json({ success: false, error: 'Too many statements (max 200 per request)' });
+  }
+
   try {
-    if (isMssql()) {
-      // Convert SQLite-style SQL to MSSQL-compatible
-      const mssqlStatements = statements.map(s => convertToMssql(s));
-      const result = await mssqlDb.executeSql(mssqlStatements);
+    if (dynamicDb.isConnected()) {
+      const result = await dynamicDb.executeSql(statements);
       res.json(result);
     } else {
-      // SQLite execution
+      // SQLite demo execution
       const db = getDb();
       const results = [];
       try {
         const runAll = db.transaction(() => {
-          for (const sql of statements) {
-            const trimmed = sql.trim();
+          for (const stmt of statements) {
+            const trimmed = stmt.trim();
             if (!trimmed || trimmed.startsWith('--')) continue;
-            const upper = trimmed.toUpperCase();
-            if (upper.startsWith('DROP') || upper.startsWith('ALTER') || upper.startsWith('CREATE')) {
+            // Strip SQL block comments before checking statement type
+            const stripped = trimmed.replace(/\/\*[\s\S]*?\*\//g, '').trim();
+            const upper = stripped.toUpperCase();
+            // BLOCK all destructive operations — only SELECT and INSERT allowed
+            if (upper.startsWith('DROP') || upper.startsWith('ALTER') || upper.startsWith('CREATE') || upper.startsWith('TRUNCATE')) {
               throw new Error(`Statement not allowed: ${trimmed.substring(0, 50)}`);
+            }
+            if (upper.startsWith('DELETE')) {
+              throw new Error('DELETE statements are not allowed. Use a database management tool for manual operations.');
+            }
+            if (upper.startsWith('UPDATE')) {
+              throw new Error('UPDATE statements are not allowed. Use a database management tool for manual operations.');
             }
             if (upper.startsWith('SELECT')) {
               const rows = db.prepare(trimmed).all();
@@ -85,9 +127,10 @@ app.post('/api/execute-sql', async (req, res) => {
             } else if (upper.startsWith('INSERT')) {
               const info = db.prepare(trimmed).run();
               results.push({ sql: trimmed.substring(0, 80), type: 'INSERT', lastInsertRowid: Number(info.lastInsertRowid), changes: info.changes });
-            } else if (upper.startsWith('UPDATE') || upper.startsWith('DELETE')) {
-              const info = db.prepare(trimmed).run();
-              results.push({ sql: trimmed.substring(0, 80), type: upper.split(' ')[0], changes: info.changes });
+            } else if (!upper) {
+              // comment-only statement after stripping — skip
+            } else {
+              throw new Error(`Statement not allowed: ${trimmed.substring(0, 50)}`);
             }
           }
         });
@@ -105,9 +148,9 @@ app.post('/api/execute-sql', async (req, res) => {
 // ─── Verify (read all tables) ────────────────────
 app.get('/api/verify', async (req, res) => {
   try {
-    if (isMssql()) {
-      const { data, counts } = await mssqlDb.getAllData();
-      res.json({ success: true, mode: 'mssql', counts, data });
+    if (dynamicDb.isConnected()) {
+      const { data, counts } = await dynamicDb.getAllData();
+      res.json({ success: true, mode: dynamicDb.getType(), counts, data });
     } else {
       const db = getDb();
       try {
@@ -138,9 +181,9 @@ app.get('/api/table/:name', async (req, res) => {
   if (!allowed.includes(tableName)) return res.status(400).json({ error: 'Invalid table name' });
 
   try {
-    if (isMssql()) {
-      const rows = await mssqlDb.getTable(tableName);
-      res.json({ success: true, mode: 'mssql', table: tableName, count: rows.length, rows });
+    if (dynamicDb.isConnected()) {
+      const rows = await dynamicDb.getTable(tableName);
+      res.json({ success: true, mode: dynamicDb.getType(), table: tableName, count: rows.length, rows });
     } else {
       const db = getDb();
       try {
@@ -156,17 +199,141 @@ app.get('/api/table/:name', async (req, res) => {
 });
 
 // ─── Reset (clear config tables) ─────────────────
+// SAFETY: Reset is BLOCKED when connected to external DB
 app.post('/api/reset', async (req, res) => {
   try {
-    if (isMssql()) {
-      await mssqlDb.resetData();
-      res.json({ success: true, mode: 'mssql', message: 'All config tables cleared on SQL Server.' });
+    if (dynamicDb.isConnected()) {
+      return res.status(403).json({
+        success: false,
+        mode: dynamicDb.getType(),
+        error: 'Reset is disabled when connected to an external database. Production data cannot be deleted through this tool.'
+      });
     } else {
       resetDb();
       res.json({ success: true, mode: 'sqlite', message: 'Database reset. All tables cleared.' });
     }
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── Database Connection Management ──────────────
+
+// Connect to external database
+app.post('/api/db/connect', async (req, res) => {
+  const { type, host, port, database, user, password, options } = req.body;
+  if (!type || !host || !database || !user) {
+    return res.status(400).json({ success: false, error: 'type, host, database, and user are required' });
+  }
+  const allowedTypes = ['mssql', 'postgres', 'mysql'];
+  if (!allowedTypes.includes(type)) {
+    return res.status(400).json({ success: false, error: `Unsupported type. Use: ${allowedTypes.join(', ')}` });
+  }
+  // Input length validation
+  if (String(host).length > 255 || String(database).length > 128 || String(user).length > 128) {
+    return res.status(400).json({ success: false, error: 'Input values exceed maximum length' });
+  }
+  const portProvided = port !== undefined && port !== null && port !== '';
+  const parsedPort = portProvided ? parseInt(port, 10) : undefined;
+  if (portProvided && (!Number.isFinite(parsedPort) || parsedPort < 1 || parsedPort > 65535)) {
+    return res.status(400).json({ success: false, error: 'Port must be between 1 and 65535' });
+  }
+  try {
+    const result = await dynamicDb.connect({ type, host, port: parsedPort, database, user, password, options });
+    console.log(`  ✓ Connected to ${type}: ${host}:${parsedPort || 'default'}/${database}`);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Disconnect from external database
+app.post('/api/db/disconnect', async (req, res) => {
+  await dynamicDb.disconnect();
+  console.log('  ✓ Disconnected from external database');
+  res.json({ success: true, message: 'Disconnected. Now using SQLite demo mode.' });
+});
+
+// Get connection status
+app.get('/api/db/status', (req, res) => {
+  res.json(dynamicDb.getStatus());
+});
+
+// Test active connection
+app.get('/api/db/test', async (req, res) => {
+  const result = await dynamicDb.testConnection();
+  res.json(result);
+});
+
+// ─── Saved Database Connections (SQLite local) ───
+
+app.get('/api/db/connections', (req, res) => {
+  const db = getDb();
+  try {
+    const connections = db.prepare('SELECT id, name, type, host, port, database_name, username, created_at FROM db_connections ORDER BY created_at DESC').all();
+    res.json({ success: true, connections });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    db.close();
+  }
+});
+
+app.post('/api/db/connections', (req, res) => {
+  const { name, type, host, port, database_name, username, password, options } = req.body;
+  if (!name || !type || !host || !database_name || !username) {
+    return res.status(400).json({ success: false, error: 'name, type, host, database_name, and username are required' });
+  }
+  const allowedTypes = ['mssql', 'postgres', 'mysql'];
+  if (!allowedTypes.includes(type)) {
+    return res.status(400).json({ success: false, error: `Unsupported type. Use: ${allowedTypes.join(', ')}` });
+  }
+  if (String(name).length > 100 || String(host).length > 255 || String(database_name).length > 128 || String(username).length > 128) {
+    return res.status(400).json({ success: false, error: 'Input values exceed maximum length' });
+  }
+  const db = getDb();
+  try {
+    const info = db.prepare(
+      'INSERT INTO db_connections (name, type, host, port, database_name, username, password, options) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(String(name).substring(0, 100), type, host, port || null, database_name, username, encryptPassword(password || ''), JSON.stringify(options || {}));
+    res.json({ success: true, id: Number(info.lastInsertRowid) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    db.close();
+  }
+});
+
+app.get('/api/db/connections/:id', (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ success: false, error: 'Invalid id' });
+  const db = getDb();
+  try {
+    const row = db.prepare('SELECT * FROM db_connections WHERE id = ?').get(id);
+    if (!row) return res.status(404).json({ success: false, error: 'Connection not found' });
+    row.options = JSON.parse(row.options || '{}');
+    // Mask password — never return plaintext credentials in API responses
+    row.password = row.password ? '••••••••' : '';
+    res.json({ success: true, connection: row });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    db.close();
+  }
+});
+
+app.delete('/api/db/connections/:id', (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ success: false, error: 'Invalid id' });
+  const db = getDb();
+  try {
+    const info = db.prepare('DELETE FROM db_connections WHERE id = ?').run(id);
+    if (info.changes === 0) return res.status(404).json({ success: false, error: 'Connection not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    db.close();
   }
 });
 
@@ -203,10 +370,16 @@ app.get('/api/configs/:id', (req, res) => {
 app.post('/api/configs', (req, res) => {
   const { name, client, config } = req.body;
   if (!name || !client || !config) return res.status(400).json({ success: false, error: 'name, client, and config are required' });
+  if (String(name).length > 200 || String(client).length > 100) {
+    return res.status(400).json({ success: false, error: 'Name or client exceeds maximum length' });
+  }
   const db = getDb();
   try {
     const configData = typeof config === 'string' ? config : JSON.stringify(config);
-    const info = db.prepare('INSERT INTO saved_configs (name, client, config_data) VALUES (?, ?, ?)').run(name, client, configData);
+    if (configData.length > 500000) {
+      return res.status(400).json({ success: false, error: 'Configuration data too large (max 500KB)' });
+    }
+    const info = db.prepare('INSERT INTO saved_configs (name, client, config_data) VALUES (?, ?, ?)').run(String(name).substring(0, 200), String(client).substring(0, 100), configData);
     res.json({ success: true, id: Number(info.lastInsertRowid) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -230,37 +403,53 @@ app.delete('/api/configs/:id', (req, res) => {
   }
 });
 
-// ─── SQL Converter (SQLite → MSSQL) ─────────────
-function convertToMssql(sql) {
-  // Remove SQLite-specific syntax
-  let converted = sql.trim();
-  // SCOPE_IDENTITY() is already MSSQL. If SQLite used last_insert_rowid(), swap it.
-  // No major conversions needed since the UI generates standard SQL.
-  return converted;
-}
+// ─── 404 Handler ─────────────────────────────────
+app.use((req, res) => {
+  // Sanitize reflected URL to prevent content injection
+  const safeUrl = req.originalUrl.substring(0, 200).replace(/[<>"']/g, '');
+  res.status(404).json({ success: false, error: `Route not found: ${req.method} ${safeUrl}` });
+});
 
-// ─── Start Server ────────────────────────────────
-init().then(() => {
-  app.listen(PORT, () => {
-    const modeLabel = isMssql()
-      ? `SQL Server (${process.env.MSSQL_HOST}:${process.env.MSSQL_PORT}/${process.env.MSSQL_DATABASE})`
-      : 'SQLite (demo.db)';
-
-    console.log(`\n  OpenConnect Server`);
-    console.log(`  ──────────────────`);
-    console.log(`  URL:     http://localhost:${PORT}`);
-    console.log(`  Mode:    ${DB_MODE.toUpperCase()}`);
-    console.log(`  DB:      ${modeLabel}`);
-    console.log(`  Status:  Running\n`);
-    console.log(`  API Endpoints:`);
-    console.log(`  GET  /api/health       - Health check & DB status`);
-    console.log(`  POST /api/execute-sql  - Execute SQL statements`);
-    console.log(`  GET  /api/verify       - View all config data`);
-    console.log(`  GET  /api/table/:name  - View specific table`);
-    console.log(`  POST /api/reset        - Reset config tables`);
-    console.log(`  GET  /api/configs      - List saved configs`);
-    console.log(`  POST /api/configs      - Save a config`);
-    console.log(`  GET  /api/configs/:id  - Get saved config`);
-    console.log(`  DELETE /api/configs/:id - Delete config\n`);
+// ─── Global Error Handler ────────────────────────
+app.use((err, req, res, _next) => {
+  console.error(`  \x1b[31mERROR\x1b[0m ${req.method} ${req.originalUrl}:`, err.message);
+  res.status(err.status || 500).json({
+    success: false,
+    error: IS_PROD ? 'Internal server error' : err.message,
   });
 });
+
+// ─── Export for testing ──────────────────────────
+export { app, init };
+
+// ─── Start Server ────────────────────────────────
+const isTestEnv = process.env.NODE_ENV === 'test' || process.env.VITEST;
+if (!isTestEnv) {
+init().then(() => {
+  const server = app.listen(PORT, () => {
+    console.log(`\n  OpenConnect Server v${process.env.npm_package_version || '1.0.0'}`);
+    console.log(`  ──────────────────`);
+    console.log(`  URL:     http://localhost:${PORT}`);
+    console.log(`  Env:     ${IS_PROD ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+    console.log(`  Mode:    Dynamic (connect via UI)`);
+    console.log(`  Status:  Running\n`);
+  });
+
+  // ─── Graceful Shutdown ───────────────────────────
+  const shutdown = async (signal) => {
+    console.log(`\n  Received ${signal}. Shutting down gracefully...`);
+    await dynamicDb.disconnect();
+    server.close(() => {
+      console.log('  Server closed.');
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 5000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('unhandledRejection', (err) => {
+    console.error('  \x1b[31mUnhandled Rejection:\x1b[0m', err);
+  });
+});
+}

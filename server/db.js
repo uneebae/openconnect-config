@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import crypto from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.join(__dirname, 'demo.db');
@@ -105,6 +106,19 @@ function initSchema() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS db_connections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      host TEXT NOT NULL,
+      port INTEGER,
+      database_name TEXT NOT NULL,
+      username TEXT NOT NULL,
+      password TEXT NOT NULL DEFAULT '',
+      options TEXT DEFAULT '{}',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   db.close();
@@ -180,4 +194,37 @@ function resetDb() {
   db.close();
 }
 
-export { getDb, initSchema, resetDb, seedDemoData, DB_PATH };
+// ─── Password Encryption for db_connections ──────
+// Uses AES-256-GCM with a machine-derived key. Not vault-grade, but
+// prevents plaintext credential exposure in the SQLite file.
+const ENC_ALGO = 'aes-256-gcm';
+const ENC_KEY_SOURCE = process.env.DB_ENCRYPTION_KEY || 'openconnect-local-dev-key-32ch!';
+const ENC_KEY = crypto.scryptSync(ENC_KEY_SOURCE, 'openconnect-salt', 32);
+
+function encryptPassword(plaintext) {
+  if (!plaintext) return '';
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(ENC_ALGO, ENC_KEY, iv);
+  let encrypted = cipher.update(plaintext, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const tag = cipher.getAuthTag().toString('hex');
+  return `${iv.toString('hex')}:${tag}:${encrypted}`;
+}
+
+function decryptPassword(stored) {
+  if (!stored || !stored.includes(':')) return stored || '';
+  try {
+    const [ivHex, tagHex, encrypted] = stored.split(':');
+    const iv = Buffer.from(ivHex, 'hex');
+    const tag = Buffer.from(tagHex, 'hex');
+    const decipher = crypto.createDecipheriv(ENC_ALGO, ENC_KEY, iv);
+    decipher.setAuthTag(tag);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch {
+    return stored; // fallback for legacy plaintext entries
+  }
+}
+
+export { getDb, initSchema, resetDb, seedDemoData, DB_PATH, encryptPassword, decryptPassword };

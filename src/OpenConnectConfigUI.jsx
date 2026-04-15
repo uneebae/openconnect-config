@@ -4,7 +4,7 @@ import {
   CheckCircle, Copy, Code, Database, RefreshCw, Play, Table, Server,
   Shield, Zap, ArrowRight, ArrowLeft, Download,
   Activity, Globe, Key, Layers, FileJson, Terminal, X, Check, Loader2, Settings,
-  Link2, Clock, Hash
+  Link2, Clock, Hash, Power, PlugZap, Unplug
 } from 'lucide-react';
 
 const API_BASE = '/api';
@@ -116,6 +116,15 @@ const OpenConnectConfigUI = () => {
   const [dbMode, setDbMode] = useState('sqlite');
   const [dbInfo, setDbInfo] = useState(null);
 
+  // ─── Database Connection Form State ────────────
+  const [showDbConnect, setShowDbConnect] = useState(false);
+  const [dbConnecting, setDbConnecting] = useState(false);
+  const [dbConnForm, setDbConnForm] = useState({
+    type: 'mssql', host: '', port: '', database: '', user: '', password: '', name: ''
+  });
+  const [savedConnections, setSavedConnections] = useState([]);
+  const [showDbPassword, setShowDbPassword] = useState(false);
+
   const showToast = (message, type = 'info') => setToast({ message, type });
 
   // Backend health check
@@ -169,27 +178,26 @@ const OpenConnectConfigUI = () => {
   const generateSqlStatements = useCallback(() => {
     const sqls = [];
     sqls.push(`-- OpenConnect Configuration SQL\n-- Generated: ${new Date().toISOString()}\n-- Client: ${clientName}\n`);
-    sqls.push(`INSERT INTO ws_config (base_url, [type], service_name)\nVALUES ('${wsConfig.baseUrl}', '${wsConfig.type}', '${wsConfig.serviceName}');\n`);
+    sqls.push(`INSERT INTO ws_config (base_url, [type], service_name)\nVALUES (${esc(wsConfig.baseUrl)}, ${esc(wsConfig.type)}, ${esc(wsConfig.serviceName)});\n`);
 
     if (wsTokenConfig.clientId) {
-      sqls.push(`INSERT INTO ws_token_config (token_field, expiry_field, expiry_type, current_token, current_expiry_epoch)\nVALUES ('${wsTokenConfig.tokenField}', '${wsTokenConfig.expiryField}', '${wsTokenConfig.expiryType}', NULL, 0);\n`);
+      sqls.push(`INSERT INTO ws_token_config (token_field, expiry_field, expiry_type, current_token, current_expiry_epoch)\nVALUES (${esc(wsTokenConfig.tokenField)}, ${esc(wsTokenConfig.expiryField)}, ${esc(wsTokenConfig.expiryType)}, NULL, 0);\n`);
     }
 
-    const headerJson = JSON.stringify(wsEndpointConfig.requestHeaders).replace(/'/g, "''");
-    sqls.push(`INSERT INTO ws_endpoint_config (config_id, [method], endpoint_template, request_format, response_format, data_template, request_headers, connection_timeout, read_timeout, response_code_path, response_include_paths, [type], reversal_type, guaranteed, variable_fields, ex_req_res_log)\nVALUES (1, '${wsEndpointConfig.method}', '${wsEndpointConfig.endpointTemplate}', '${wsEndpointConfig.requestFormat}', '${wsEndpointConfig.responseFormat}', '${wsEndpointConfig.dataTemplate.replace(/'/g, "''")}', '${headerJson}', ${wsEndpointConfig.connectionTimeout}, ${wsEndpointConfig.readTimeout}, '${wsEndpointConfig.responseCodePath}', '${wsEndpointConfig.responseIncludePaths}', '${wsEndpointConfig.type}', '${wsEndpointConfig.reversalType}', ${wsEndpointConfig.guaranteed ? 1 : 0}, '${wsEndpointConfig.variableFields.join(',')}', '${wsEndpointConfig.exReqResLog ? 'Y' : 'N'}');\n`);
+    const headerJson = JSON.stringify(wsEndpointConfig.requestHeaders);
+    sqls.push(`INSERT INTO ws_endpoint_config (config_id, [method], endpoint_template, request_format, response_format, data_template, request_headers, connection_timeout, read_timeout, response_code_path, response_include_paths, [type], reversal_type, guaranteed, variable_fields, ex_req_res_log)\nVALUES (1, ${esc(wsEndpointConfig.method)}, ${esc(wsEndpointConfig.endpointTemplate)}, ${esc(wsEndpointConfig.requestFormat)}, ${esc(wsEndpointConfig.responseFormat)}, ${esc(wsEndpointConfig.dataTemplate)}, ${esc(headerJson)}, ${escNum(wsEndpointConfig.connectionTimeout)}, ${escNum(wsEndpointConfig.readTimeout)}, ${esc(wsEndpointConfig.responseCodePath)}, ${esc(wsEndpointConfig.responseIncludePaths)}, ${esc(wsEndpointConfig.type)}, ${esc(wsEndpointConfig.reversalType)}, ${wsEndpointConfig.guaranteed ? 1 : 0}, ${esc(wsEndpointConfig.variableFields.join(','))}, ${esc(wsEndpointConfig.exReqResLog ? 'Y' : 'N')});\n`);
 
     sqls.push(`-- Response Code Mappings`);
     wsResponseDefinition.forEach((resp) => {
-      sqls.push(`INSERT INTO ws_response_definition (config_id, match_code, our_code, our_description)\nVALUES (1, '${resp.matchCode}', '${resp.ourCode}', '${resp.ourDescription}');`);
+      sqls.push(`INSERT INTO ws_response_definition (config_id, match_code, our_code, our_description)\nVALUES (1, ${esc(resp.matchCode)}, ${esc(resp.ourCode)}, ${esc(resp.ourDescription)});`);
     });
     sqls.push('');
 
-    sqls.push(`INSERT INTO ws_req_param_details (tran_id, tran_type, queue_in, queue_type, from_ip, host_id, response_type, saf_queue)\nVALUES (${wsReqParamDetails.tranId}, '${wsReqParamDetails.tranType}', '${wsReqParamDetails.queueIn}', '${wsReqParamDetails.queueType}', '${wsReqParamDetails.fromIp}', ${wsReqParamDetails.hostId}, '${wsReqParamDetails.responseType}', '${wsReqParamDetails.safQueue}');\n`);
+    sqls.push(`INSERT INTO ws_req_param_details (tran_id, tran_type, queue_in, queue_type, from_ip, host_id, response_type, saf_queue)\nVALUES (${escNum(wsReqParamDetails.tranId)}, ${esc(wsReqParamDetails.tranType)}, ${esc(wsReqParamDetails.queueIn)}, ${esc(wsReqParamDetails.queueType)}, ${esc(wsReqParamDetails.fromIp)}, ${escNum(wsReqParamDetails.hostId)}, ${esc(wsReqParamDetails.responseType)}, ${esc(wsReqParamDetails.safQueue)});\n`);
 
     sqls.push(`-- Field Mappings`);
     tranRequestMap.forEach((field, idx) => {
-      const regexVal = field.regex ? `'${field.regex}'` : "''";
-      sqls.push(`INSERT INTO tran_req_map (id, tran_id, param_name, value, is_mandatory, max_length, regex, log_parameter, log_column, is_batch, is_escape, param_priority)\nVALUES (${field.id}, ${wsReqParamDetails.tranId}, '${field.paramName}', '${field.value}', '${field.isMandatory}', '${field.maxLength}', ${regexVal}, ${field.logParameter}, ${field.logColumn ? `'${field.logColumn}'` : 'NULL'}, 0, 0, ${idx + 1});`);
+      sqls.push(`INSERT INTO tran_req_map (id, tran_id, param_name, value, is_mandatory, max_length, regex, log_parameter, log_column, is_batch, is_escape, param_priority)\nVALUES (${escNum(field.id)}, ${escNum(wsReqParamDetails.tranId)}, ${esc(field.paramName)}, ${esc(field.value)}, ${esc(field.isMandatory)}, ${esc(field.maxLength)}, ${esc(field.regex)}, ${escNum(field.logParameter)}, ${field.logColumn ? esc(field.logColumn) : 'NULL'}, 0, 0, ${idx + 1});`);
     });
 
     return sqls.join('\n');
@@ -263,33 +271,46 @@ const OpenConnectConfigUI = () => {
     }
   };
 
+  // ─── SQL Escape Helper (prevents SQL injection) ─
+  const esc = (val) => {
+    if (val == null) return 'NULL';
+    return "'" + String(val).replace(/'/g, "''") + "'";
+  };
+  const escNum = (val) => { const n = Number(val); return Number.isFinite(n) ? n : 0; };
+
   const generateSqliteStatements = useCallback(() => {
     const stmts = [];
-    stmts.push(`INSERT INTO ws_config (base_url, type, service_name) VALUES ('${wsConfig.baseUrl}', '${wsConfig.type}', '${wsConfig.serviceName}')`);
+    stmts.push(`INSERT INTO ws_config (base_url, type, service_name) VALUES (${esc(wsConfig.baseUrl)}, ${esc(wsConfig.type)}, ${esc(wsConfig.serviceName)})`);
     if (wsTokenConfig.clientId) {
-      stmts.push(`INSERT INTO ws_token_config (token_field, expiry_field, expiry_type, current_token, current_expiry_epoch) VALUES ('${wsTokenConfig.tokenField}', '${wsTokenConfig.expiryField}', '${wsTokenConfig.expiryType}', NULL, 0)`);
+      stmts.push(`INSERT INTO ws_token_config (token_field, expiry_field, expiry_type, current_token, current_expiry_epoch) VALUES (${esc(wsTokenConfig.tokenField)}, ${esc(wsTokenConfig.expiryField)}, ${esc(wsTokenConfig.expiryType)}, NULL, 0)`);
     }
-    const headerJson = JSON.stringify(wsEndpointConfig.requestHeaders).replace(/'/g, "''");
-    const dataTemplate = wsEndpointConfig.dataTemplate.replace(/'/g, "''");
-    stmts.push(`INSERT INTO ws_endpoint_config (config_id, method, endpoint_template, request_format, response_format, data_template, request_headers, connection_timeout, read_timeout, response_code_path, response_include_paths, type, reversal_type, guaranteed, variable_fields, ex_req_res_log) VALUES (1, '${wsEndpointConfig.method}', '${wsEndpointConfig.endpointTemplate}', '${wsEndpointConfig.requestFormat}', '${wsEndpointConfig.responseFormat}', '${dataTemplate}', '${headerJson}', ${wsEndpointConfig.connectionTimeout}, ${wsEndpointConfig.readTimeout}, '${wsEndpointConfig.responseCodePath}', '${wsEndpointConfig.responseIncludePaths}', '${wsEndpointConfig.type}', '${wsEndpointConfig.reversalType}', ${wsEndpointConfig.guaranteed ? 1 : 0}, '${wsEndpointConfig.variableFields.join(',')}', '${wsEndpointConfig.exReqResLog ? 'Y' : 'N'}')`);
+    const headerJson = JSON.stringify(wsEndpointConfig.requestHeaders);
+    stmts.push(`INSERT INTO ws_endpoint_config (config_id, method, endpoint_template, request_format, response_format, data_template, request_headers, connection_timeout, read_timeout, response_code_path, response_include_paths, type, reversal_type, guaranteed, variable_fields, ex_req_res_log) VALUES (1, ${esc(wsEndpointConfig.method)}, ${esc(wsEndpointConfig.endpointTemplate)}, ${esc(wsEndpointConfig.requestFormat)}, ${esc(wsEndpointConfig.responseFormat)}, ${esc(wsEndpointConfig.dataTemplate)}, ${esc(headerJson)}, ${escNum(wsEndpointConfig.connectionTimeout)}, ${escNum(wsEndpointConfig.readTimeout)}, ${esc(wsEndpointConfig.responseCodePath)}, ${esc(wsEndpointConfig.responseIncludePaths)}, ${esc(wsEndpointConfig.type)}, ${esc(wsEndpointConfig.reversalType)}, ${wsEndpointConfig.guaranteed ? 1 : 0}, ${esc(wsEndpointConfig.variableFields.join(','))}, ${esc(wsEndpointConfig.exReqResLog ? 'Y' : 'N')})`);
     wsResponseDefinition.forEach((resp) => {
-      stmts.push(`INSERT INTO ws_response_definition (config_id, match_code, our_code, our_description) VALUES (1, '${resp.matchCode}', '${resp.ourCode}', '${resp.ourDescription}')`);
+      stmts.push(`INSERT INTO ws_response_definition (config_id, match_code, our_code, our_description) VALUES (1, ${esc(resp.matchCode)}, ${esc(resp.ourCode)}, ${esc(resp.ourDescription)})`);
     });
-    stmts.push(`INSERT INTO ws_req_param_details (tran_id, tran_type, queue_in, queue_type, from_ip, host_id, response_type, saf_queue) VALUES (${wsReqParamDetails.tranId}, '${wsReqParamDetails.tranType}', '${wsReqParamDetails.queueIn}', '${wsReqParamDetails.queueType}', '${wsReqParamDetails.fromIp}', ${wsReqParamDetails.hostId}, '${wsReqParamDetails.responseType}', '${wsReqParamDetails.safQueue}')`);
+    stmts.push(`INSERT INTO ws_req_param_details (tran_id, tran_type, queue_in, queue_type, from_ip, host_id, response_type, saf_queue) VALUES (${escNum(wsReqParamDetails.tranId)}, ${esc(wsReqParamDetails.tranType)}, ${esc(wsReqParamDetails.queueIn)}, ${esc(wsReqParamDetails.queueType)}, ${esc(wsReqParamDetails.fromIp)}, ${escNum(wsReqParamDetails.hostId)}, ${esc(wsReqParamDetails.responseType)}, ${esc(wsReqParamDetails.safQueue)})`);
     tranRequestMap.forEach((field, idx) => {
-      const regexVal = field.regex ? `'${field.regex}'` : "''";
-      stmts.push(`INSERT INTO tran_req_map (id, tran_id, param_name, value, is_mandatory, max_length, regex, log_parameter, log_column, is_batch, is_escape, param_priority) VALUES (${field.id}, ${wsReqParamDetails.tranId}, '${field.paramName}', '${field.value}', '${field.isMandatory}', '${field.maxLength}', ${regexVal}, ${field.logParameter}, ${field.logColumn ? `'${field.logColumn}'` : 'NULL'}, 0, 0, ${idx + 1})`);
+      stmts.push(`INSERT INTO tran_req_map (id, tran_id, param_name, value, is_mandatory, max_length, regex, log_parameter, log_column, is_batch, is_escape, param_priority) VALUES (${escNum(field.id)}, ${escNum(wsReqParamDetails.tranId)}, ${esc(field.paramName)}, ${esc(field.value)}, ${esc(field.isMandatory)}, ${esc(field.maxLength)}, ${esc(field.regex)}, ${escNum(field.logParameter)}, ${field.logColumn ? esc(field.logColumn) : 'NULL'}, 0, 0, ${idx + 1})`);
     });
     return stmts;
   }, [wsConfig, wsEndpointConfig, wsTokenConfig, tranRequestMap, wsResponseDefinition, wsReqParamDetails]);
 
   const executeInDemoDB = async () => {
+    // Safety confirmation for external DB modes
+    if (dbMode !== 'sqlite') {
+      const confirmed = window.confirm(
+        `⚠️ WARNING: You are about to INSERT data into the PRODUCTION ${dbTypeLabels[dbMode] || dbMode} database.\n\n` +
+        'This will add new rows to the live database. Make sure you know what you are doing.\n\n' +
+        'Click OK to proceed or Cancel to abort.'
+      );
+      if (!confirmed) return;
+    }
     setDbStatus('executing');
     setDbResults(null);
     setVerifyData(null);
     setShowVerify(false);
     try {
-      await fetch(`${API_BASE}/reset`, { method: 'POST' });
       const statements = generateSqliteStatements();
       const resp = await fetch(`${API_BASE}/execute-sql`, {
         method: 'POST',
@@ -329,6 +350,11 @@ const OpenConnectConfigUI = () => {
   };
 
   const resetDemoDB = async () => {
+    // Block reset when connected to any external database
+    if (dbMode !== 'sqlite') {
+      showToast('Reset is disabled when connected to an external database. Production data is protected.', 'error');
+      return;
+    }
     try {
       await fetch(`${API_BASE}/reset`, { method: 'POST' });
       setDbStatus(null);
@@ -338,6 +364,133 @@ const OpenConnectConfigUI = () => {
       showToast('Database reset complete', 'info');
     } catch {
       showToast('Reset failed - server not running', 'error');
+    }
+  };
+
+  // ─── Database Connection Management ────────────
+  const defaultPorts = { mssql: 1433, postgres: 5432, mysql: 3306 };
+  const dbTypeLabels = { mssql: 'SQL Server', postgres: 'PostgreSQL', mysql: 'MySQL' };
+
+  const fetchSavedConnections = async () => {
+    try {
+      const resp = await fetch(`${API_BASE}/db/connections`);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.success) setSavedConnections(data.connections || []);
+      }
+    } catch { /* silent */ }
+  };
+
+  useEffect(() => {
+    if (backendStatus === 'connected') fetchSavedConnections();
+  }, [backendStatus]);
+
+  const connectToDatabase = async () => {
+    if (!dbConnForm.host || !dbConnForm.database || !dbConnForm.user) {
+      showToast('Host, Database, and Username are required', 'warning');
+      return;
+    }
+    setDbConnecting(true);
+    try {
+      const resp = await fetch(`${API_BASE}/db/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: dbConnForm.type,
+          host: dbConnForm.host,
+          port: dbConnForm.port || defaultPorts[dbConnForm.type],
+          database: dbConnForm.database,
+          user: dbConnForm.user,
+          password: dbConnForm.password,
+          options: { trustCert: true }
+        })
+      });
+      const data = await resp.json();
+      if (data.success) {
+        setDbMode(data.type);
+        setDbInfo({ server: data.host, database: data.database, mode: data.type });
+        setShowDbConnect(false);
+        showToast(`Connected to ${dbTypeLabels[data.type]}: ${data.database}`, 'success');
+      } else {
+        showToast(`Connection failed: ${data.error}`, 'error');
+      }
+    } catch (err) {
+      showToast(`Connection error: ${err.message}`, 'error');
+    } finally {
+      setDbConnecting(false);
+    }
+  };
+
+  const disconnectDatabase = async () => {
+    try {
+      await fetch(`${API_BASE}/db/disconnect`, { method: 'POST' });
+      setDbMode('sqlite');
+      setDbInfo(null);
+      showToast('Disconnected. Using SQLite demo mode.', 'info');
+    } catch {
+      showToast('Failed to disconnect', 'error');
+    }
+  };
+
+  const saveConnection = async () => {
+    if (!dbConnForm.name) {
+      showToast('Give this connection a name before saving', 'warning');
+      return;
+    }
+    try {
+      const resp = await fetch(`${API_BASE}/db/connections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: dbConnForm.name,
+          type: dbConnForm.type,
+          host: dbConnForm.host,
+          port: dbConnForm.port || defaultPorts[dbConnForm.type],
+          database_name: dbConnForm.database,
+          username: dbConnForm.user,
+          password: dbConnForm.password,
+          options: { trustCert: true }
+        })
+      });
+      const data = await resp.json();
+      if (data.success) {
+        showToast('Connection saved', 'success');
+        fetchSavedConnections();
+      }
+    } catch {
+      showToast('Failed to save connection', 'error');
+    }
+  };
+
+  const loadSavedConnection = async (id) => {
+    try {
+      const resp = await fetch(`${API_BASE}/db/connections/${id}`);
+      const data = await resp.json();
+      if (data.success) {
+        const c = data.connection;
+        setDbConnForm({
+          type: c.type,
+          host: c.host,
+          port: c.port || '',
+          database: c.database_name,
+          user: c.username,
+          password: '', // Password is masked by the API — user must re-enter
+          name: c.name
+        });
+        showToast(`Loaded: ${c.name} (re-enter password to connect)`, 'info');
+      }
+    } catch {
+      showToast('Failed to load connection', 'error');
+    }
+  };
+
+  const deleteSavedConnection = async (id) => {
+    try {
+      await fetch(`${API_BASE}/db/connections/${id}`, { method: 'DELETE' });
+      showToast('Connection deleted', 'info');
+      fetchSavedConnections();
+    } catch {
+      showToast('Failed to delete', 'error');
     }
   };
 
@@ -677,17 +830,17 @@ const OpenConnectConfigUI = () => {
         <h4 className="font-semibold text-slate-200 mb-4 flex items-center gap-2 text-sm">
           <Database className="w-4 h-4 text-indigo-400" />
           Database Testing
-          {dbMode === 'mssql' && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 ml-1">LIVE SQL Server</span>
+          {dbMode !== 'sqlite' && (
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 ml-1">LIVE {(dbTypeLabels[dbMode] || dbMode).toUpperCase()}</span>
           )}
         </h4>
-        <div className={`flex items-start gap-3 p-4 rounded-xl mb-4 ${dbMode === 'mssql' ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-indigo-500/10 border border-indigo-500/20'}`}>
-          <Database className={`w-5 h-5 flex-shrink-0 mt-0.5 ${dbMode === 'mssql' ? 'text-blue-400' : 'text-indigo-400'}`} />
+        <div className={`flex items-start gap-3 p-4 rounded-xl mb-4 ${dbMode !== 'sqlite' ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-indigo-500/10 border border-indigo-500/20'}`}>
+          <Database className={`w-5 h-5 flex-shrink-0 mt-0.5 ${dbMode !== 'sqlite' ? 'text-blue-400' : 'text-indigo-400'}`} />
           <div>
-            {dbMode === 'mssql' ? (
+            {dbMode !== 'sqlite' ? (
               <>
-                <p className="text-sm text-blue-300">Connected to <strong>{dbInfo?.database || 'SQL Server'}</strong> at <code className="bg-blue-500/20 px-1.5 rounded text-xs">{dbInfo?.server || ''}</code></p>
-                <p className="text-xs text-blue-400/60 mt-1">SQL will execute directly on your production SQL Server database.</p>
+                <p className="text-sm text-blue-300">Connected to <strong>{dbInfo?.database || 'Database'}</strong> at <code className="bg-blue-500/20 px-1.5 rounded text-xs">{dbInfo?.server || ''}</code></p>
+                <p className="text-xs text-blue-400/60 mt-1">SQL will execute directly on your production {dbTypeLabels[dbMode] || dbMode} database.</p>
               </>
             ) : (
               <>
@@ -701,14 +854,15 @@ const OpenConnectConfigUI = () => {
           <button onClick={executeInDemoDB} disabled={dbStatus === 'executing'}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600/90 text-white rounded-xl hover:bg-emerald-500 transition font-medium text-sm disabled:opacity-50">
             {dbStatus === 'executing' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            {dbStatus === 'executing' ? 'Executing...' : (dbMode === 'mssql' ? 'Execute on SQL Server' : 'Execute in Demo DB')}
+            {dbStatus === 'executing' ? 'Executing...' : (dbMode !== 'sqlite' ? `Execute on ${dbTypeLabels[dbMode] || dbMode}` : 'Execute in Demo DB')}
           </button>
           <button onClick={verifyDemoDB}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600/90 text-white rounded-xl hover:bg-indigo-500 transition font-medium text-sm">
             <Table className="w-4 h-4" /> Verify Data
           </button>
-          <button onClick={resetDemoDB}
-            className="flex items-center justify-center gap-2 px-4 py-3 bg-red-600/80 text-white rounded-xl hover:bg-red-500 transition font-medium text-sm">
+          <button onClick={resetDemoDB} disabled={dbMode !== 'sqlite'}
+            className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition font-medium text-sm ${dbMode !== 'sqlite' ? 'bg-gray-600/40 text-gray-500 cursor-not-allowed' : 'bg-red-600/80 text-white hover:bg-red-500'}`}
+            title={dbMode !== 'sqlite' ? 'Reset is disabled when connected to external database' : 'Reset demo database'}>
             <RefreshCw className="w-4 h-4" /> Reset
           </button>
         </div>
@@ -872,6 +1026,182 @@ const OpenConnectConfigUI = () => {
         </div>
       )}
 
+      {/* Database Connection Modal */}
+      {showDbConnect && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 bg-gradient-to-r from-blue-600/10 to-purple-600/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/20 flex items-center justify-center">
+                  <Database className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Database Connection</h3>
+                  <p className="text-xs text-slate-400">Connect to SQL Server, PostgreSQL, or MySQL</p>
+                </div>
+              </div>
+              <button onClick={() => setShowDbConnect(false)} className="p-1.5 hover:bg-slate-700 rounded-lg transition"><X className="w-5 h-5 text-slate-400" /></button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+              {/* Saved Connections */}
+              {savedConnections.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Saved Connections</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {savedConnections.map((conn) => (
+                      <div key={conn.id} className="group flex items-center justify-between p-3 bg-slate-800/50 rounded-xl border border-slate-700/50 hover:border-blue-500/30 transition cursor-pointer"
+                        onClick={() => loadSavedConnection(conn.id)}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                            conn.type === 'mssql' ? 'bg-blue-500/20' : conn.type === 'postgres' ? 'bg-cyan-500/20' : 'bg-orange-500/20'
+                          }`}>
+                            <Database className={`w-4 h-4 ${
+                              conn.type === 'mssql' ? 'text-blue-400' : conn.type === 'postgres' ? 'text-cyan-400' : 'text-orange-400'
+                            }`} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-200 truncate">{conn.name}</p>
+                            <p className="text-[10px] text-slate-500 truncate">{conn.host}:{conn.port} / {conn.database_name}</p>
+                          </div>
+                        </div>
+                        <button onClick={(e) => { e.stopPropagation(); deleteSavedConnection(conn.id); }}
+                          className="p-1 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Connection Form */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-widest">New Connection</h4>
+                  <div className="flex-1 h-px bg-slate-700/50" />
+                </div>
+
+                {/* Connection Name */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2">
+                    <Save className="w-4 h-4 text-blue-400" /> Connection Name
+                  </label>
+                  <input type="text" placeholder="e.g. Raast_Openconnect_uneeb" value={dbConnForm.name}
+                    onChange={(e) => setDbConnForm({ ...dbConnForm, name: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-800/80 border border-slate-600/50 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm" />
+                  <p className="mt-1 text-xs text-slate-500">Name to identify this connection when saving</p>
+                </div>
+
+                {/* Database Type */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2">
+                    <Server className="w-4 h-4 text-blue-400" /> Database Type
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { value: 'mssql', label: 'SQL Server', color: 'blue', desc: 'Microsoft SQL Server' },
+                      { value: 'postgres', label: 'PostgreSQL', color: 'cyan', desc: 'Open source RDBMS' },
+                      { value: 'mysql', label: 'MySQL', color: 'orange', desc: 'Oracle MySQL / MariaDB' },
+                    ].map((opt) => (
+                      <button key={opt.value} onClick={() => setDbConnForm({ ...dbConnForm, type: opt.value, port: '' })}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          dbConnForm.type === opt.value
+                            ? `bg-${opt.color}-500/15 border-${opt.color}-500/40 ring-1 ring-${opt.color}-500/30`
+                            : 'bg-slate-800/30 border-slate-700/50 hover:border-slate-600'
+                        }`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Database className={`w-4 h-4 ${dbConnForm.type === opt.value ? `text-${opt.color}-400` : 'text-slate-500'}`} />
+                          <span className={`text-sm font-semibold ${dbConnForm.type === opt.value ? 'text-white' : 'text-slate-300'}`}>{opt.label}</span>
+                        </div>
+                        <p className="text-[10px] text-slate-500">{opt.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Host + Port */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2">
+                      <Globe className="w-4 h-4 text-blue-400" /> Host
+                    </label>
+                    <input type="text" placeholder="e.g. 10.5.70.5 or localhost" value={dbConnForm.host}
+                      onChange={(e) => setDbConnForm({ ...dbConnForm, host: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-slate-800/80 border border-slate-600/50 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-mono" />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2">
+                      <Hash className="w-4 h-4 text-blue-400" /> Port
+                    </label>
+                    <input type="number" placeholder={String(defaultPorts[dbConnForm.type])} value={dbConnForm.port}
+                      onChange={(e) => setDbConnForm({ ...dbConnForm, port: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-slate-800/80 border border-slate-600/50 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-mono" />
+                  </div>
+                </div>
+
+                {/* Database Name */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2">
+                    <Database className="w-4 h-4 text-blue-400" /> Database Name
+                  </label>
+                  <input type="text" placeholder="e.g. Raast_Openconnect_uneeb" value={dbConnForm.database}
+                    onChange={(e) => setDbConnForm({ ...dbConnForm, database: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-slate-800/80 border border-slate-600/50 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-mono" />
+                </div>
+
+                {/* Username + Password */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2">
+                      <Key className="w-4 h-4 text-blue-400" /> Username
+                    </label>
+                    <input type="text" placeholder="e.g. appuser_demo" value={dbConnForm.user}
+                      onChange={(e) => setDbConnForm({ ...dbConnForm, user: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-slate-800/80 border border-slate-600/50 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm" />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-semibold text-slate-300 mb-2">
+                      <Shield className="w-4 h-4 text-blue-400" /> Password
+                    </label>
+                    <div className="relative">
+                      <input type={showDbPassword ? 'text' : 'password'} placeholder="••••••••"
+                        value={dbConnForm.password}
+                        onChange={(e) => setDbConnForm({ ...dbConnForm, password: e.target.value })}
+                        className="w-full px-4 py-2.5 pr-10 bg-slate-800/80 border border-slate-600/50 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm" />
+                      <button type="button" onClick={() => setShowDbPassword(!showDbPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition">
+                        {showDbPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Safety Notice */}
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                  <Shield className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-400/80">
+                    <strong>Safety:</strong> Only SELECT and INSERT are allowed on external databases. DELETE, UPDATE, DROP, and RESET are permanently blocked.
+                  </p>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2 pt-2">
+                  <button onClick={connectToDatabase} disabled={dbConnecting || !dbConnForm.host || !dbConnForm.database || !dbConnForm.user}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-500 hover:to-indigo-500 transition font-medium text-sm shadow-lg shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {dbConnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlugZap className="w-4 h-4" />}
+                    {dbConnecting ? 'Connecting...' : 'Connect'}
+                  </button>
+                  <button onClick={saveConnection} disabled={!dbConnForm.name || !dbConnForm.host}
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-700/50 text-slate-300 rounded-xl hover:bg-slate-600/50 transition font-medium text-sm border border-slate-600/50 disabled:opacity-30 disabled:cursor-not-allowed">
+                    <Save className="w-4 h-4" /> Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* HEADER */}
       <header className="glass border-b border-slate-700/50 sticky top-0 z-30">
         <div className="max-w-[1400px] mx-auto px-6 py-3.5">
@@ -899,11 +1229,27 @@ const OpenConnectConfigUI = () => {
                   {backendStatus === 'connected' ? 'Connected' : backendStatus === 'checking' ? 'Checking...' : 'Offline'}
                 </span>
                 {backendStatus === 'connected' && (
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${dbMode === 'mssql' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-600/30 text-slate-400 border border-slate-600/30'}`}>
-                    {dbMode === 'mssql' ? 'SQL Server' : 'SQLite'}
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                    dbMode !== 'sqlite'
+                      ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                      : 'bg-slate-600/30 text-slate-400 border border-slate-600/30'
+                  }`}>
+                    {dbMode !== 'sqlite' ? (dbTypeLabels[dbMode] || dbMode) : 'SQLite'}
                   </span>
                 )}
               </div>
+              {/* DB Connect / Disconnect button */}
+              {dbMode !== 'sqlite' ? (
+                <button onClick={disconnectDatabase}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 transition text-xs text-red-400 hover:text-red-300">
+                  <Unplug className="w-3.5 h-3.5" /> Disconnect
+                </button>
+              ) : (
+                <button onClick={() => { setShowDbConnect(true); fetchSavedConnections(); }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/30 hover:bg-blue-500/20 transition text-xs text-blue-400 hover:text-blue-300">
+                  <PlugZap className="w-3.5 h-3.5" /> Connect DB
+                </button>
+              )}
               <button onClick={() => { setShowSavedConfigs(true); fetchSavedConfigs(); }}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:bg-slate-700/50 transition text-xs text-slate-400 hover:text-slate-200">
                 <Download className="w-3.5 h-3.5" /> Saved ({savedConfigs.length})

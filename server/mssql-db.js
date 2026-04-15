@@ -76,9 +76,20 @@ async function executeSql(statements) {
       if (!trimmed || trimmed.startsWith('--')) continue;
 
       const upper = trimmed.toUpperCase();
-      // Block dangerous statements
+      // Block dangerous statements — no DELETE, DROP, ALTER, TRUNCATE on production
       if (upper.startsWith('DROP') || upper.startsWith('ALTER') || upper.startsWith('TRUNCATE')) {
         throw new Error(`Statement not allowed: ${trimmed.substring(0, 50)}`);
+      }
+      if (upper.startsWith('DELETE')) {
+        throw new Error('DELETE statements are blocked on production SQL Server. Use SQL Server Management Studio for manual data operations.');
+      }
+      if (upper.startsWith('UPDATE')) {
+        throw new Error('UPDATE statements are blocked on production SQL Server. Use SQL Server Management Studio for manual data operations.');
+      }
+
+      // Only SELECT and INSERT are allowed on production
+      if (!upper.startsWith('SELECT') && !upper.startsWith('INSERT')) {
+        throw new Error(`Statement not allowed on production: ${trimmed.substring(0, 50)}`);
       }
 
       const request = new sql.Request(transaction);
@@ -92,12 +103,6 @@ async function executeSql(statements) {
           type: 'INSERT',
           rowsAffected: result.rowsAffected[0]
         });
-      } else if (upper.startsWith('UPDATE') || upper.startsWith('DELETE')) {
-        results.push({
-          sql: trimmed.substring(0, 80),
-          type: upper.split(/\s/)[0],
-          changes: result.rowsAffected[0]
-        });
       }
     }
 
@@ -109,19 +114,9 @@ async function executeSql(statements) {
   }
 }
 
-// ─── Reset (clear data from all config tables) ───
-
-async function resetData() {
-  const p = await getPool();
-  await p.request().query(`
-    DELETE FROM tran_req_map;
-    DELETE FROM ws_response_definition;
-    DELETE FROM ws_req_param_details;
-    DELETE FROM ws_endpoint_config;
-    DELETE FROM ws_token_config;
-    DELETE FROM ws_config;
-  `);
-}
+// ─── Reset — PERMANENTLY DISABLED for production safety ───
+// This function is intentionally removed. Production data cannot be deleted through this tool.
+// Use SQL Server Management Studio (SSMS) for any manual data operations.
 
 // ─── Saved Configurations (using saved_configs table in SQLite — local only) ───
 // Note: saved_configs stays in SQLite even in MSSQL mode, since it's app-level state
@@ -133,4 +128,4 @@ async function closePool() {
   }
 }
 
-export { getPool, testConnection, getAllData, getTable, executeSql, resetData, closePool };
+export { getPool, testConnection, getAllData, getTable, executeSql, closePool };
