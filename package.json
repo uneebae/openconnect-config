@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "lint": "eslint src --ext js,jsx",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test-api": "node server/test-api.js"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",

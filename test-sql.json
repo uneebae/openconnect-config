@@ -1,0 +1,6 @@
+{
+  "statements": [
+    "INSERT INTO ws_config (base_url, type, service_name) VALUES ('http://localhost:3010/api/v1/openconnect', 'core-banking', 'OpenConnect Title Fetch')",
+    "INSERT INTO ws_endpoint_config (config_id, method, endpoint_template, request_format, response_format, data_template, request_headers, connection_timeout, read_timeout, response_code_path, response_include_paths, type, reversal_type, guaranteed, variable_fields, ex_req_res_log) VALUES ({LAST_INSERT_ID}, 'POST', '/title-fetch', 'JSON', 'JSON', '{\"channelId\":\"{CHANNEL_ID}\",\"requestId\":\"{REQUEST_ID}\",\"traceId\":\"{TRACE_ID}\",\"transactionDateTime\":\"{TXN_DATETIME}\",\"data\":{\"bankCode\":\"{BANK_CODE}\",\"accountNumber\":\"{ACCOUNT_NUMBER}\",\"iban\":\"{IBAN}\",\"rrn\":\"{RRN}\",\"stan\":\"{STAN}\"}}', '{\"Content-Type\":\"application/json\"}', 5000, 30000, '$.responseCode', '$.data.accountTitle,$.data.titleFetchStatus,$.responseMessage,$.data.rrn,$.data.stan', 'TITLE_FETCH', 'NONE', 0, '', 'Y')"
+  ]
+}

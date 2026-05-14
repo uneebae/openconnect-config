@@ -5,38 +5,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="OpenConnect Configuration Automation - No-code API integration for Paysys Labs. Developed by Uneeb.">
     <meta name="author" content="Uneeb">
+    <meta name="theme-color" content="#080c18">
     <title>OpenConnect | Configuration Automation</title>
     <link rel="icon" type="image/png" href="/src/img/favicon.png">
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz@14..32;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        html, body, #root {
-            width: 100%;
-            height: 100%;
-        }
-        
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body, #root { width: 100%; height: 100%; }
+        html { scroll-behavior: smooth; }
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
-                sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
-            background: #0a0e1a;
+            background: #080c18;
+            color: #dce6f5;
         }
+        code, .font-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
 
-        code, .font-mono {
-            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        /* ── Loading splash (removed by React on mount) ── */
+        #oc-splash {
+            position: fixed; inset: 0; z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+            background: #080c18;
+            transition: opacity 0.4s ease, visibility 0.4s ease;
         }
+        #oc-splash.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+        #oc-splash .spinner {
+            width: 36px; height: 36px;
+            border: 3px solid rgba(90,139,245,0.15);
+            border-top-color: #5a8bf5;
+            border-radius: 50%;
+            animation: oc-spin 0.7s linear infinite;
+        }
+        #oc-splash p { font-size: 12px; color: #3a567a; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
+        @keyframes oc-spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
+    <div id="oc-splash"><div class="spinner"></div><p>Loading OpenConnect</p></div>
     <div id="root"></div>
     <script type="module" src="/src/index.jsx"></script>
 </body>

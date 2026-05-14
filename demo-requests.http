@@ -1,0 +1,514 @@
+### ═══════════════════════════════════════════════════════════════
+### OpenConnect — Demo API Requests
+### Install: REST Client (humao.rest-client) → click "Send Request"
+###
+### Servers:
+###   Mock API   → npm run test-api    (port 3010)
+###   Backend    → npm run server      (port 3002)
+###
+### Test accounts:
+###   1234567890  → MUHAMMAD AHMED KHAN  (balance: 150,250.75)
+###   9876543210  → FATIMA ZAHRA SHEIKH  (balance: 85,430.00)
+###   1111111111  → UNEEB AHMED
+###   0000000000  → triggers "Account not found"
+###   bankCode 999 → triggers "Bank unreachable"
+### ═══════════════════════════════════════════════════════════════
+
+@baseUrl     = http://localhost:3010
+@backendUrl  = http://localhost:3002
+@contentType = application/json
+
+
+# ───────────────────────────────────────────────────────────────
+# HEALTH CHECK
+# ───────────────────────────────────────────────────────────────
+
+### [1] Mock API Health
+GET {{baseUrl}}/api/v1/health
+
+###
+
+
+# ───────────────────────────────────────────────────────────────
+# DEMO URL 1 — Account Balance Inquiry
+# POST http://localhost:3010/api/v1/account/balance-inquiry
+# ───────────────────────────────────────────────────────────────
+
+### [2] Balance Inquiry — Happy Path (account found, full response)
+# Expected: responseCode=000, accountTitle=MUHAMMAD AHMED KHAN, balance=150,250.75
+POST {{baseUrl}}/api/v1/account/balance-inquiry
+Content-Type: {{contentType}}
+
+{
+  "channelId": "MOBILE_APP",
+  "requestId": "TF20260423001",
+  "traceId": "TRACE20260423001",
+  "transactionDateTime": "2026-04-23T10:00:00.000Z",
+  "bankCode": "01",
+  "accountNumber": "1234567890",
+  "iban": "",
+  "rrn": "202604230001",
+  "stan": "100001"
+}
+
+###
+
+### [3] Balance Inquiry — Account Not Found
+# Expected: responseCode=001, "Account not found"
+POST {{baseUrl}}/api/v1/account/balance-inquiry
+Content-Type: {{contentType}}
+
+{
+  "channelId": "MOBILE_APP",
+  "requestId": "TF20260423002",
+  "traceId": "TRACE20260423002",
+  "transactionDateTime": "2026-04-23T10:01:00.000Z",
+  "bankCode": "01",
+  "accountNumber": "0000000000",
+  "iban": "",
+  "rrn": "202604230002",
+  "stan": "100002"
+}
+
+###
+
+### [4] Balance Inquiry — Bank Unreachable
+# Expected: responseCode=002, "Bank not reachable"
+POST {{baseUrl}}/api/v1/account/balance-inquiry
+Content-Type: {{contentType}}
+
+{
+  "channelId": "MOBILE_APP",
+  "requestId": "TF20260423003",
+  "traceId": "TRACE20260423003",
+  "transactionDateTime": "2026-04-23T10:02:00.000Z",
+  "bankCode": "999",
+  "accountNumber": "1234567890",
+  "iban": "",
+  "rrn": "202604230003",
+  "stan": "100003"
+}
+
+###
+
+
+# ───────────────────────────────────────────────────────────────
+# DEMO URL 2 — Account Title Fetch  (IBFT Pre-validation)
+# POST http://localhost:3010/api/v1/account/title-fetch
+# ───────────────────────────────────────────────────────────────
+
+### [5] Title Fetch — Happy Path (account found)
+# Expected: responseCode=000, accountTitle=UNEEB AHMED, bankName=Standard Chartered
+POST {{baseUrl}}/api/v1/account/title-fetch
+Content-Type: {{contentType}}
+
+{
+  "channelId": "INTERNET_BANKING",
+  "requestId": "TF20260423010",
+  "traceId": "TRACE20260423010",
+  "transactionDateTime": "2026-04-23T10:10:00.000Z",
+  "bankCode": "03",
+  "accountNumber": "1111111111",
+  "iban": "",
+  "rrn": "202604230010",
+  "stan": "100010"
+}
+
+###
+
+### [6] Title Fetch — Second Account (different holder)
+# Expected: responseCode=000, accountTitle=ALI HASSAN MIRZA
+POST {{baseUrl}}/api/v1/account/title-fetch
+Content-Type: {{contentType}}
+
+{
+  "channelId": "INTERNET_BANKING",
+  "requestId": "TF20260423011",
+  "traceId": "TRACE20260423011",
+  "transactionDateTime": "2026-04-23T10:11:00.000Z",
+  "bankCode": "05",
+  "accountNumber": "2222222222",
+  "iban": "",
+  "rrn": "202604230011",
+  "stan": "100011"
+}
+
+###
+
+### [7] Title Fetch — Invalid Account
+# Expected: responseCode=014, "Invalid account number"
+POST {{baseUrl}}/api/v1/account/title-fetch
+Content-Type: {{contentType}}
+
+{
+  "channelId": "INTERNET_BANKING",
+  "requestId": "TF20260423012",
+  "traceId": "TRACE20260423012",
+  "transactionDateTime": "2026-04-23T10:12:00.000Z",
+  "bankCode": "01",
+  "accountNumber": "0000000000",
+  "iban": "",
+  "rrn": "202604230012",
+  "stan": "100012"
+}
+
+###
+
+### [8] Title Fetch — Issuer Unavailable
+# Expected: responseCode=091, "Issuer unavailable"
+POST {{baseUrl}}/api/v1/account/title-fetch
+Content-Type: {{contentType}}
+
+{
+  "channelId": "INTERNET_BANKING",
+  "requestId": "TF20260423013",
+  "traceId": "TRACE20260423013",
+  "transactionDateTime": "2026-04-23T10:13:00.000Z",
+  "bankCode": "999",
+  "accountNumber": "1234567890",
+  "iban": "",
+  "rrn": "202604230013",
+  "stan": "100013"
+}
+
+###
+
+
+# ───────────────────────────────────────────────────────────────
+# DEMO URL 3 — RAAST Instant Transfer
+# POST http://localhost:3010/api/v1/payment/raast-transfer
+# ───────────────────────────────────────────────────────────────
+
+### [9] RAAST Transfer — Happy Path (P2P)
+# Expected: responseCode=00, raastTransactionId, status=COMPLETED
+POST {{baseUrl}}/api/v1/payment/raast-transfer
+Content-Type: {{contentType}}
+
+{
+  "channelId": "MOBILE_APP",
+  "requestId": "RT20260423020",
+  "traceId": "TRACE20260423020",
+  "transactionDateTime": "2026-04-23T10:20:00.000Z",
+  "senderIban": "PK36SCBL0000001123456789",
+  "receiverIban": "PK36HABB0000001987654321",
+  "receiverAlias": "",
+  "amount": "5000.00",
+  "currency": "PKR",
+  "purposeCode": "P2P",
+  "narration": "Loan repayment",
+  "rrn": "202604230020",
+  "stan": "100020"
+}
+
+###
+
+### [10] RAAST Transfer — By Alias (mobile number / CNIC)
+# Expected: responseCode=00, receiver identified by alias
+POST {{baseUrl}}/api/v1/payment/raast-transfer
+Content-Type: {{contentType}}
+
+{
+  "channelId": "INTERNET_BANKING",
+  "requestId": "RT20260423021",
+  "traceId": "TRACE20260423021",
+  "transactionDateTime": "2026-04-23T10:21:00.000Z",
+  "senderIban": "PK36SCBL0000001123456789",
+  "receiverIban": "",
+  "receiverAlias": "03001234567",
+  "amount": "1500.00",
+  "currency": "PKR",
+  "purposeCode": "SALA",
+  "narration": "Monthly salary",
+  "rrn": "202604230021",
+  "stan": "100021"
+}
+
+###
+
+### [11] RAAST Transfer — Amount Exceeds Limit
+# Expected: responseCode=ER04, "Transaction amount exceeds RAAST per-transaction limit"
+POST {{baseUrl}}/api/v1/payment/raast-transfer
+Content-Type: {{contentType}}
+
+{
+  "channelId": "MOBILE_APP",
+  "requestId": "RT20260423022",
+  "traceId": "TRACE20260423022",
+  "transactionDateTime": "2026-04-23T10:22:00.000Z",
+  "senderIban": "PK36SCBL0000001123456789",
+  "receiverIban": "PK36HABB0000001987654321",
+  "receiverAlias": "",
+  "amount": "9999999.00",
+  "currency": "PKR",
+  "purposeCode": "P2P",
+  "rrn": "202604230022",
+  "stan": "100022"
+}
+
+###
+
+### [12] RAAST Transfer — Blocked Receiver
+# Expected: responseCode=ER09, "Receiver account is blocked"
+POST {{baseUrl}}/api/v1/payment/raast-transfer
+Content-Type: {{contentType}}
+
+{
+  "channelId": "MOBILE_APP",
+  "requestId": "RT20260423023",
+  "traceId": "TRACE20260423023",
+  "transactionDateTime": "2026-04-23T10:23:00.000Z",
+  "senderIban": "PK36SCBL0000001123456789",
+  "receiverIban": "PK00RAST0000000000000000",
+  "receiverAlias": "",
+  "amount": "1000.00",
+  "currency": "PKR",
+  "purposeCode": "P2P",
+  "rrn": "202604230023",
+  "stan": "100023"
+}
+
+###
+
+
+# ───────────────────────────────────────────────────────────────
+# DEMO URL 4 — Card Verification / 3DS
+# POST http://localhost:3010/api/v1/card/verify
+# ───────────────────────────────────────────────────────────────
+
+### [13] Card Verify — Happy Path (no 3DS)
+# Expected: responseCode=CV00, VISA card verified
+POST {{baseUrl}}/api/v1/card/verify
+Content-Type: {{contentType}}
+
+{
+  "channelId": "E_COMMERCE",
+  "requestId": "CV20260423030",
+  "traceId": "TRACE20260423030",
+  "transactionDateTime": "2026-04-23T10:30:00.000Z",
+  "cardNumber": "4111111111111234",
+  "expiryMonth": "12",
+  "expiryYear": "28",
+  "cvv": "123",
+  "merchantId": "MCH_DEMO_001",
+  "amount": "2500.00",
+  "rrn": "202604230030",
+  "stan": "100030"
+}
+
+###
+
+### [14] Card Verify — With 3DS OTP (correct OTP)
+# Expected: responseCode=CV00, threeDSAuthenticated=true
+POST {{baseUrl}}/api/v1/card/verify
+Content-Type: {{contentType}}
+
+{
+  "channelId": "E_COMMERCE",
+  "requestId": "CV20260423031",
+  "traceId": "TRACE20260423031",
+  "transactionDateTime": "2026-04-23T10:31:00.000Z",
+  "cardNumber": "5500000000001234",
+  "expiryMonth": "06",
+  "expiryYear": "27",
+  "cvv": "456",
+  "otp": "123456",
+  "merchantId": "MCH_DEMO_001",
+  "amount": "10000.00",
+  "rrn": "202604230031",
+  "stan": "100031"
+}
+
+###
+
+### [15] Card Verify — Wrong OTP (3DS failure)
+# Expected: responseCode=CV68, "3DS OTP verification failed"
+POST {{baseUrl}}/api/v1/card/verify
+Content-Type: {{contentType}}
+
+{
+  "channelId": "E_COMMERCE",
+  "requestId": "CV20260423032",
+  "traceId": "TRACE20260423032",
+  "transactionDateTime": "2026-04-23T10:32:00.000Z",
+  "cardNumber": "5500000000001234",
+  "expiryMonth": "06",
+  "expiryYear": "27",
+  "cvv": "456",
+  "otp": "999999",
+  "merchantId": "MCH_DEMO_001",
+  "amount": "10000.00",
+  "rrn": "202604230032",
+  "stan": "100032"
+}
+
+###
+
+### [16] Card Verify — Expired Card
+# Expected: responseCode=CV54, "Card expired" (last4=9999)
+POST {{baseUrl}}/api/v1/card/verify
+Content-Type: {{contentType}}
+
+{
+  "channelId": "E_COMMERCE",
+  "requestId": "CV20260423033",
+  "traceId": "TRACE20260423033",
+  "transactionDateTime": "2026-04-23T10:33:00.000Z",
+  "cardNumber": "4111111111119999",
+  "expiryMonth": "01",
+  "expiryYear": "20",
+  "cvv": "123",
+  "merchantId": "MCH_DEMO_001",
+  "amount": "500.00",
+  "rrn": "202604230033",
+  "stan": "100033"
+}
+
+###
+
+### [17] Card Verify — Invalid CVV
+# Expected: responseCode=CV82, "Invalid CVV"
+POST {{baseUrl}}/api/v1/card/verify
+Content-Type: {{contentType}}
+
+{
+  "channelId": "E_COMMERCE",
+  "requestId": "CV20260423034",
+  "traceId": "TRACE20260423034",
+  "transactionDateTime": "2026-04-23T10:34:00.000Z",
+  "cardNumber": "4111111111111234",
+  "expiryMonth": "12",
+  "expiryYear": "28",
+  "cvv": "000",
+  "merchantId": "MCH_DEMO_001",
+  "amount": "500.00",
+  "rrn": "202604230034",
+  "stan": "100034"
+}
+
+###
+
+
+# ───────────────────────────────────────────────────────────────
+# DEMO URL 5 — Fund Transfer (existing)
+# POST http://localhost:3010/api/v1/account/fund-transfer
+# ───────────────────────────────────────────────────────────────
+
+### [18] Fund Transfer — Happy Path
+# Expected: responseCode=000, transactionId, status=COMPLETED
+POST {{baseUrl}}/api/v1/account/fund-transfer
+Content-Type: {{contentType}}
+
+{
+  "channelId": "MOBILE_APP",
+  "requestId": "FT20260423040",
+  "traceId": "TRACE20260423040",
+  "transactionDateTime": "2026-04-23T10:40:00.000Z",
+  "fromAccount": "1234567890",
+  "toAccount": "9876543210",
+  "amount": "25000.00",
+  "currency": "PKR",
+  "bankCode": "01",
+  "narration": "Rent payment",
+  "rrn": "202604230040",
+  "stan": "100040"
+}
+
+###
+
+### [19] Fund Transfer — Same Account Error
+# Expected: responseCode=005
+POST {{baseUrl}}/api/v1/account/fund-transfer
+Content-Type: {{contentType}}
+
+{
+  "channelId": "MOBILE_APP",
+  "requestId": "FT20260423041",
+  "traceId": "TRACE20260423041",
+  "transactionDateTime": "2026-04-23T10:41:00.000Z",
+  "fromAccount": "1234567890",
+  "toAccount": "1234567890",
+  "amount": "1000.00",
+  "currency": "PKR",
+  "bankCode": "01",
+  "rrn": "202604230041",
+  "stan": "100041"
+}
+
+###
+
+
+# ───────────────────────────────────────────────────────────────
+# BACKEND — OpenConnect API Layer (config must be in DB first)
+# POST http://localhost:3002/api/layer/invoke/:configId
+# ───────────────────────────────────────────────────────────────
+
+### [20] List All Configured Services (from DB)
+GET {{backendUrl}}/api/layer/configs
+
+###
+
+### [21] Backend Health Check
+GET {{backendUrl}}/api/health
+
+###
+
+### [22] API Layer Invoke — Balance Inquiry via OpenConnect
+# Replace :1 with the actual configId from [20] above
+# OpenConnect reads the DB config, builds the request, and proxies to mock API
+POST {{backendUrl}}/api/layer/invoke/1
+Content-Type: {{contentType}}
+
+{
+  "channelId": "MOBILE_APP",
+  "requestId": "TF20260423050",
+  "traceId": "TRACE20260423050",
+  "transactionDateTime": "2026-04-23T10:50:00.000Z",
+  "bankCode": "01",
+  "accountNumber": "1234567890",
+  "iban": "",
+  "rrn": "202604230050",
+  "stan": "100050"
+}
+
+###
+
+### [23] API Layer Invoke — Title Fetch via OpenConnect
+# Replace :2 with the configId for title-fetch from [20]
+POST {{backendUrl}}/api/layer/invoke/2
+Content-Type: {{contentType}}
+
+{
+  "channelId": "INTERNET_BANKING",
+  "requestId": "TF20260423051",
+  "traceId": "TRACE20260423051",
+  "transactionDateTime": "2026-04-23T10:51:00.000Z",
+  "bankCode": "03",
+  "accountNumber": "1111111111",
+  "iban": "",
+  "rrn": "202604230051",
+  "stan": "100051"
+}
+
+###
+
+### [24] API Layer Invoke — RAAST Transfer via OpenConnect
+# Replace :3 with the configId for raast-transfer from [20]
+POST {{backendUrl}}/api/layer/invoke/3
+Content-Type: {{contentType}}
+
+{
+  "channelId": "MOBILE_APP",
+  "requestId": "RT20260423052",
+  "traceId": "TRACE20260423052",
+  "transactionDateTime": "2026-04-23T10:52:00.000Z",
+  "senderIban": "PK36SCBL0000001123456789",
+  "receiverIban": "PK36HABB0000001987654321",
+  "receiverAlias": "",
+  "amount": "5000.00",
+  "currency": "PKR",
+  "purposeCode": "P2P",
+  "rrn": "202604230052",
+  "stan": "100052"
+}
+
+###

@@ -5,6 +5,14 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { getDb, initSchema, resetDb, seedDemoData, encryptPassword, decryptPassword } from './db.js';
 import * as dynamicDb from './dynamic-db.js';
+import { createApiLayerRoutes } from './api-layer.js';
+import { runValidation } from './validationService.js';
+import { initValidationHistorySchema, saveValidationResult, getValidationHistory, getAllValidationHistory, getValidationDetail } from './validationHistoryService.js';
+import { parseCurlCommand } from './curlImportService.js';
+import { initTransactionLogSchema, getTransactionLogs, getTransactionDetail, getTransactionStats, getTranTypes } from './transactionLogService.js';
+import { initReadinessSchema, runReadinessCheck, getReadinessHistory } from './readinessCheckService.js';
+import { getEnvironments, getEnvironment, setEnvironmentOverride, resolveEndpoint, checkHealth, buildOcCoreRequest, generateOcCoreCurl } from './ocCoreRoutingService.js';
+import { getAndParse, postAndParse, buildSignedGetUrl, buildSignedPostUrl, buildPostBody, parseOcCoreResponse } from './ocCoreTransportService.js';
 
 const app = express();
 const PORT = process.env.PORT || 3002;
@@ -59,6 +67,9 @@ app.use((req, res, next) => {
 async function init() {
   // SQLite always initializes (for saved_configs + db_connections)
   initSchema();
+  initValidationHistorySchema();
+  initTransactionLogSchema();
+  initReadinessSchema();
   seedDemoData();
   console.log('  ✓ SQLite local storage ready');
 }
@@ -103,9 +114,11 @@ app.post('/api/execute-sql', async (req, res) => {
       // SQLite demo execution
       const db = getDb();
       const results = [];
+      let lastInsertId = null;
       try {
         const runAll = db.transaction(() => {
-          for (const stmt of statements) {
+          for (let i = 0; i < statements.length; i++) {
+            let stmt = statements[i];
             const trimmed = stmt.trim();
             if (!trimmed || trimmed.startsWith('--')) continue;
             // Strip SQL block comments before checking statement type
@@ -125,8 +138,25 @@ app.post('/api/execute-sql', async (req, res) => {
               const rows = db.prepare(trimmed).all();
               results.push({ sql: trimmed.substring(0, 80), type: 'SELECT', rows });
             } else if (upper.startsWith('INSERT')) {
-              const info = db.prepare(trimmed).run();
-              results.push({ sql: trimmed.substring(0, 80), type: 'INSERT', lastInsertRowid: Number(info.lastInsertRowid), changes: info.changes });
+              // Support {LAST_INSERT_ID} placeholder for foreign key references
+              // Replace placeholder BEFORE executing: '{LAST_INSERT_ID}' -> actual numeric ID
+              const usesPlaceholder = stmt.includes('{LAST_INSERT_ID}');
+              if (lastInsertId !== null && usesPlaceholder) {
+                // Replace all variations: {LAST_INSERT_ID}, '{LAST_INSERT_ID}', "{LAST_INSERT_ID}"
+                const idString = String(lastInsertId);
+                stmt = stmt.split('{LAST_INSERT_ID}').join(idString);
+              } else if (lastInsertId === null && usesPlaceholder) {
+                // First statement cannot use placeholder
+                throw new Error('Cannot use {LAST_INSERT_ID} in first INSERT statement');
+              }
+              
+              const info = db.prepare(stmt).run();
+              // Only update lastInsertId from the FIRST insert (the parent row)
+              // so that subsequent references keep pointing to it
+              if (lastInsertId === null) {
+                lastInsertId = Number(info.lastInsertRowid);
+              }
+              results.push({ sql: stmt.substring(0, 80), type: 'INSERT', lastInsertRowid: Number(info.lastInsertRowid), changes: info.changes });
             } else if (!upper) {
               // comment-only statement after stripping — skip
             } else {
@@ -400,6 +430,390 @@ app.delete('/api/configs/:id', (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   } finally {
     db.close();
+  }
+});
+
+// ─── API Layer (OpenConnect proxy to external APIs) ──
+createApiLayerRoutes(app);
+
+// ─── API Validation Dashboard Routes ─────────────
+
+// POST /api/layer/validate/:configId — Full validation with stage tracking
+app.post('/api/layer/validate/:configId', async (req, res) => {
+  const configId = parseInt(req.params.configId, 10);
+  if (!Number.isFinite(configId)) {
+    return res.status(400).json({ success: false, error: 'Invalid configId' });
+  }
+  const environment = req.body._environment || 'mock';
+  const allowedEnvs = ['mock', 'uat', 'production'];
+  if (!allowedEnvs.includes(environment)) {
+    return res.status(400).json({ success: false, error: 'Invalid environment. Use: mock, uat, production' });
+  }
+  // Strip internal meta-params before passing to validation engine
+  const params = { ...req.body };
+  delete params._environment;
+  delete params._save;
+
+  try {
+    const result = await runValidation(configId, params, environment);
+
+    // Auto-save to history if requested (default true)
+    if (req.body._save !== false) {
+      try {
+        const saved = saveValidationResult(result);
+        result.historyId = saved.id;
+      } catch (err) {
+        console.error('  Failed to save validation history:', err.message);
+      }
+    }
+
+    const statusCode = result.success ? 200 : (result.errorCode === 'CONFIG_NOT_FOUND' ? 404 : 502);
+    res.status(statusCode).json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/layer/validation-history/:configId — History for a config
+app.get('/api/layer/validation-history/:configId', (req, res) => {
+  const configId = parseInt(req.params.configId, 10);
+  if (!Number.isFinite(configId)) {
+    return res.status(400).json({ success: false, error: 'Invalid configId' });
+  }
+  try {
+    const success = req.query.success !== undefined ? req.query.success === 'true' : undefined;
+    const history = getValidationHistory(configId, {
+      limit: Math.min(parseInt(req.query.limit) || 50, 200),
+      offset: parseInt(req.query.offset) || 0,
+      success,
+      environment: req.query.environment || undefined,
+    });
+    res.json({ success: true, history });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/layer/validation-history — All history (no configId filter)
+app.get('/api/layer/validation-history', (req, res) => {
+  try {
+    const success = req.query.success !== undefined ? req.query.success === 'true' : undefined;
+    const history = getAllValidationHistory({
+      limit: Math.min(parseInt(req.query.limit) || 100, 200),
+      offset: parseInt(req.query.offset) || 0,
+      success,
+      environment: req.query.environment || undefined,
+    });
+    res.json({ success: true, history });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/layer/validation-history/detail/:historyId — Single entry detail
+app.get('/api/layer/validation-history/detail/:historyId', (req, res) => {
+  const historyId = parseInt(req.params.historyId, 10);
+  if (!Number.isFinite(historyId)) {
+    return res.status(400).json({ success: false, error: 'Invalid historyId' });
+  }
+  try {
+    const detail = getValidationDetail(historyId);
+    if (!detail) return res.status(404).json({ success: false, error: 'Not found' });
+    res.json({ success: true, detail });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── cURL Import ─────────────────────────────────────────────────
+app.post('/api/import/curl', (req, res) => {
+  const { curl } = req.body;
+  if (!curl || typeof curl !== 'string') {
+    return res.status(400).json({ success: false, error: 'Provide { curl: "..." }' });
+  }
+  if (curl.length > 8000) {
+    return res.status(400).json({ success: false, error: 'cURL command too long (max 8000 chars)' });
+  }
+  const result = parseCurlCommand(curl);
+  if (!result.success) {
+    return res.status(422).json(result);
+  }
+  res.json(result);
+});
+
+// ─── Transaction Log ──────────────────────────────────────────────
+
+app.get('/api/transactions', (req, res) => {
+  try {
+    const { limit, offset, status, tranType, correlationId, dateFrom, dateTo } = req.query;
+    const result = getTransactionLogs({ limit, offset, status, tranType, correlationId, dateFrom, dateTo });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/transactions/stats', (req, res) => {
+  try {
+    const stats = getTransactionStats();
+    res.json({ success: true, stats });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/transactions/tran-types', (req, res) => {
+  try {
+    const types = getTranTypes();
+    res.json({ success: true, types });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/transactions/:correlationId', (req, res) => {
+  const { correlationId } = req.params;
+  if (!correlationId || correlationId.length > 100 || /[<>"'\\;]/.test(correlationId)) {
+    return res.status(400).json({ success: false, error: 'Invalid correlationId' });
+  }
+  try {
+    const detail = getTransactionDetail(correlationId);
+    if (!detail) return res.status(404).json({ success: false, error: 'Transaction not found' });
+    res.json({ success: true, ...detail });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── Production Readiness Checker ────────────────────────────────
+
+app.post('/api/config/readiness-check', async (req, res) => {
+  const configName = req.body?.configName;
+  try {
+    const result = await runReadinessCheck(configName || 'Current Config');
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/config/readiness-history', (req, res) => {
+  try {
+    const history = getReadinessHistory(parseInt(req.query.limit) || 20);
+    res.json({ success: true, history });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ─── OC Core Environment Routes ──────────────────
+
+app.get('/api/oc-core/environments', (req, res) => {
+  res.json({ success: true, environments: getEnvironments() });
+});
+
+app.get('/api/oc-core/environment/:envId', (req, res) => {
+  const env = getEnvironment(req.params.envId);
+  if (!env) return res.status(404).json({ success: false, error: 'Unknown environment' });
+  res.json({ success: true, environment: env });
+});
+
+app.put('/api/oc-core/environment/:envId', (req, res) => {
+  const { baseUrl, endpoints } = req.body;
+  if (baseUrl && (typeof baseUrl !== 'string' || baseUrl.length > 500)) {
+    return res.status(400).json({ success: false, error: 'Invalid baseUrl' });
+  }
+  const ok = setEnvironmentOverride(req.params.envId, { baseUrl, endpoints });
+  if (!ok) return res.status(404).json({ success: false, error: 'Unknown environment' });
+  res.json({ success: true });
+});
+
+app.get('/api/oc-core/health/:envId', async (req, res) => {
+  const result = await checkHealth(req.params.envId);
+  res.json(result);
+});
+
+app.get('/api/oc-core/resolve/:envId/:endpointType', (req, res) => {
+  const resolved = resolveEndpoint(req.params.envId, req.params.endpointType);
+  if (!resolved) return res.status(404).json({ success: false, error: 'Cannot resolve endpoint' });
+  res.json({ success: true, ...resolved });
+});
+
+app.post('/api/oc-core/build-request', (req, res) => {
+  const { configId, tranType, queueIn, queueType, hostId, fromIp, params } = req.body;
+  const payload = buildOcCoreRequest({ configId, tranType, queueIn, queueType, hostId, fromIp, params });
+  res.json({ success: true, payload });
+});
+
+app.post('/api/oc-core/generate-curl', (req, res) => {
+  const { envId, endpointType, configId, tranType, queueIn, queueType, hostId, fromIp, params } = req.body;
+  const payload = buildOcCoreRequest({ configId, tranType, queueIn, queueType, hostId, fromIp, params });
+  const curl = generateOcCoreCurl(envId || 'MOCK', endpointType || 'validate', payload);
+  if (!curl) return res.status(400).json({ success: false, error: 'Could not generate cURL' });
+  res.json({ success: true, curl });
+});
+
+// ─── OC Core CAS-Format Transport Routes ──────────────────────────
+// These routes use the SHA-256 signed positional-params protocol
+// ported from com.paysyslabs.cas.util.OpenConnectUtils
+
+/**
+ * POST /api/oc-core/invoke
+ * Invoke an OC Core endpoint using CAS-style signed transport.
+ *
+ * Body:
+ *   {
+ *     endpoint: string,     // full URL of OC Core endpoint
+ *     method: 'GET'|'POST', // HTTP method (default: POST)
+ *     params: string[],     // positional params array (tran_type is params[0])
+ *     rrn: string,          // correlation/reference ID for logging
+ *     tranType: string,     // transaction type (for 400 error parsing)
+ *     timeoutMs: number,    // optional timeout override
+ *     timeoutCodes: string[], // optional timeout response code overrides
+ *   }
+ */
+app.post('/api/oc-core/invoke', async (req, res) => {
+  const { endpoint, method = 'POST', params, rrn, tranType, timeoutMs, timeoutCodes } = req.body;
+
+  if (!endpoint || typeof endpoint !== 'string' || endpoint.length > 1000) {
+    return res.status(400).json({ success: false, error: 'Invalid or missing endpoint' });
+  }
+  if (!Array.isArray(params) || params.length === 0) {
+    return res.status(400).json({ success: false, error: 'params must be a non-empty array' });
+  }
+  // Limit array length to prevent abuse
+  if (params.length > 50) {
+    return res.status(400).json({ success: false, error: 'params array too large (max 50)' });
+  }
+
+  const opts = {
+    rrn: rrn || '',
+    tranType: tranType || String(params[0]),
+    ...(timeoutMs && { timeoutMs: parseInt(timeoutMs) }),
+    ...(Array.isArray(timeoutCodes) && { timeoutCodes }),
+  };
+
+  try {
+    const result = method.toUpperCase() === 'GET'
+      ? await getAndParse(endpoint, params, opts)
+      : await postAndParse(endpoint, params, opts);
+
+    const httpStatus = result.success ? 200 : (result.errorCode === 'OC_TIMEOUT' ? 504 : 422);
+    res.status(httpStatus).json({ ...result, endpoint, method: method.toUpperCase(), params_count: params.length });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/oc-core/invoke/preview
+ * Preview signed URL + body without making the actual call.
+ * Useful for debugging and cURL generation.
+ */
+app.post('/api/oc-core/invoke/preview', (req, res) => {
+  const { endpoint, method = 'POST', params } = req.body;
+
+  if (!endpoint || typeof endpoint !== 'string' || endpoint.length > 1000) {
+    return res.status(400).json({ success: false, error: 'Invalid or missing endpoint' });
+  }
+  if (!Array.isArray(params) || params.length === 0) {
+    return res.status(400).json({ success: false, error: 'params must be a non-empty array' });
+  }
+
+  const isGet = method.toUpperCase() === 'GET';
+  const signedUrl  = isGet ? buildSignedGetUrl(endpoint, params) : buildSignedPostUrl(endpoint, params);
+  const postBody   = isGet ? null : buildPostBody(params);
+
+  const curlLines = [
+    `curl -X ${method.toUpperCase()} "${signedUrl}"`,
+    ...(isGet ? [] : [
+      '  -H "Content-Type: text/plain"',
+      `  -d '${postBody}'`,
+    ]),
+  ];
+
+  res.json({
+    success: true,
+    method: method.toUpperCase(),
+    signedUrl,
+    postBody,
+    curl: curlLines.join(' \\\n'),
+    params_count: params.length,
+    note: 'Signature uses SHA-256(URL-encoded params + ,secret). Secret masked from output.',
+  });
+});
+
+/**
+ * POST /api/oc-core/parse-response
+ * Parse a raw OC Core response string into structured result.
+ * Useful for testing / debugging existing OC Core logs.
+ */
+app.post('/api/oc-core/parse-response', (req, res) => {
+  const { raw, tranType } = req.body;
+  if (!raw || typeof raw !== 'string') {
+    return res.status(400).json({ success: false, error: 'Provide { raw: "...json string..." }' });
+  }
+  const result = parseOcCoreResponse(raw, tranType);
+  res.json(result);
+});
+
+/**
+ * POST /api/oc-core/passthrough
+ * Forward Postman collection format (JSON body) directly to OC Core.
+ * This is for testing connectivity with your existing Postman collection.
+ * 
+ * Body:
+ *   {
+ *     endpoint: string,         // OC Core URL
+ *     method: 'GET'|'POST',     // HTTP method
+ *     body: object,             // The JSON body from Postman (with meta_data + body)
+ *     timeoutMs: number         // optional timeout
+ *   }
+ */
+app.post('/api/oc-core/passthrough', async (req, res) => {
+  const { endpoint, method = 'GET', body, timeoutMs = 30000 } = req.body;
+
+  if (!endpoint || typeof endpoint !== 'string' || endpoint.length > 1000) {
+    return res.status(400).json({ success: false, error: 'Invalid or missing endpoint' });
+  }
+  if (!body || typeof body !== 'object') {
+    return res.status(400).json({ success: false, error: 'Body must be an object' });
+  }
+
+  try {
+    const fetchMethod = method.toUpperCase();
+    const options = {
+      method: fetchMethod,
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
+      body: JSON.stringify(body), // Always include body for both GET and POST
+    };
+
+    const response = await fetch(endpoint, options);
+    const responseText = await response.text();
+    
+    let parsed;
+    try {
+      parsed = JSON.parse(responseText);
+    } catch {
+      parsed = { raw: responseText };
+    }
+
+    res.json({
+      success: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      data: parsed,
+      meta_data: body.meta_data,
+    });
+  } catch (err) {
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+      res.status(504).json({ success: false, error: 'Request timeout', code: 'OC_TIMEOUT' });
+    } else if (err.code === 'ECONNREFUSED') {
+      res.status(503).json({ success: false, error: 'Connection refused - OC Core unreachable' });
+    } else {
+      res.status(500).json({ success: false, error: err.message });
+    }
   }
 });
 

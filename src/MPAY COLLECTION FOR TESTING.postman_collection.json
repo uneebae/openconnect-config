@@ -1,0 +1,359 @@
+{
+  "info": {
+    "_postman_id": "1bd218e2-c731-49db-9290-1c458559db81",
+    "name": "MPAY COLLECTION FOR TESTING",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "36132042",
+    "_collection_link": "https://go.postman.co/collection/36132042-1bd218e2-c731-49db-9290-1c458559db81?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "1link TF",
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n\t\"meta_data\": {\r\n\t\t\"method\": \"POST\",\r\n\t\t\"trans_type\": \"title-fetch\"\r\n\t},\r\n\t\"body\": {\r\n    \"TransactionAmount\": \"000000002000\",\r\n    \"TransmissionDateAndTime\": \"0220104400\",\r\n    \"stan\": \"218998\",\r\n    \"Time\": \"104400\",\r\n    \"Date\": \"0220\",\r\n    \"FromBankIMD\": \"639357\",\r\n    \"rrn\": \"182486216659\",\r\n    \"Location\":\"Test Store\",\r\n    \"City\":\"Karachi\",\r\n    \"State\":\"Sindh\",\r\n    \"ZipCode\":\"74200\",  \r\n    \"AgentName\":\"Bank Islamic\",\r\n    \"AgentCity\":\"Remit Channel\",\r\n    \"ADCLiteral\":\"Any Channel\",\r\n    \"BankName\":\"Bank Islamic\",\r\n    \"Country\":\"PK\",\r\n    \"AccountNumberTo\":\"PK66MEZN00015401065442903\",\r\n    \"ToBankIMD\":\"627873\",\r\n    \"PAN\":\"0000000000000\"\r\n\t}\r\n}\r\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://10.0.142.4:7033/mpg/queueforwarding/",
+          "protocol": "http",
+          "host": [
+            "10",
+            "0",
+            "142",
+            "4"
+          ],
+          "port": "7033",
+          "path": [
+            "mpg",
+            "queueforwarding",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "1link IBFT Payment",
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"meta_data\": {\r\n    \"method\": \"POST\",\r\n    \"trans_type\": \"ibft-payment\"\r\n  },\r\n  \"body\": {\r\n    \"TransactionAmount\": \"000000013500\",\r\n    \"TransmissionDateAndTime\": \"1224133520\",\r\n    \"stan\": \"619162\",\r\n    \"Time\": \"133520\",\r\n    \"Date\": \"1224\",\r\n    \"FromBankIMD\": \"639357\",\r\n    \"rrn\": \"100319615162\",\r\n    \"AuthorizationIdentificationResponse\": \"233964\",\r\n    \"Location\": \"Test Store\",\r\n    \"City\": \"Karachi\",\r\n    \"State\": \"Sindh\",\r\n    \"ZipCode\": \"74200\",\r\n    \"AgentName\": \"Fahim\",\r\n    \"AgentCity\": \"Karachi\",\r\n    \"ADCLiteral\": \"Any Channel\",\r\n    \"BankName\": \"1link Model Bank\",\r\n    \"Country\": \"PK\",\r\n    \"PaymentDetail\": \"0401\",\r\n    \"AccountNumberFrom\": \"102700659510201\",\r\n    \"AccountNumberTo\": \"12345678911112\",\r\n    \"ToBankIMD\": \"221166\",\r\n    \"PAN\": \"5311990001869341\",\r\n    \"BeneficiaryBankName\": \"1link Model Bank\",\r\n    \"Reserved1\": \"46501-0710145-2               42501-0510145-10586Khurram Asif             \",\r\n    \"Reserved2\": \"\",\r\n    \"Reserved3\": \"\",\r\n    \"SenderName\": \"Leroy Green\",\r\n    \"SenderIBAN\": \"12345678911112\",\r\n    \"AccountTitle\": \"ZAHID HUSSAIN\"\r\n  }\r\n}\r\n",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://10.0.142.4:7033/mpg/queueforwarding/",
+          "protocol": "http",
+          "host": [
+            "10",
+            "0",
+            "142",
+            "4"
+          ],
+          "port": "7033",
+          "path": [
+            "mpg",
+            "queueforwarding",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "1link IBFT Inquiry",
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"meta_data\": {\r\n        \"method\": \"POST\",\r\n        \"trans_type\": \"ibft-inquiry\"\r\n    },\r\n    \"body\": {\r\n        \"TransactionAmount\": \"000000000200\",\r\n        \"TransmissionDateAndTime\": \"1121110000\",\r\n        \"stan\": \"509139\",\r\n        \"TransactionTime\": \"134400\",\r\n        \"TransactionDate\": \"1121\",\r\n        \"ConversionDate\": \"\",\r\n        \"FromBankIMD\": \"998876\",\r\n        \"rrn\": \"100313509139\",\r\n        \"AuthorizationIdentificationResponse\": \"895578\",\r\n        \"Location\": \"Test Store\",\r\n        \"City\": \"Karachi\",\r\n        \"State\": \"Sindh\",\r\n        \"ZipCode\": \"74200\",\r\n        \"AgentName\": \"Umair Sheikh\",\r\n        \"ADCLiteral\": \"ADC Literal\",\r\n        \"AgentCity\": \"Any Channel\",\r\n        \"BankName\": \"1link Model Bank\",\r\n        \"Country\": \"PK\",\r\n        \"AccountNumberFrom\": \"PK74ABPA0002000001100111\",\r\n        \"AccountNumberTo\": \"PK23MBPK0000020910000975\",\r\n        \"ToBankIMD\": \"221166\",\r\n        \"PAN\": \"4250108749566\",\r\n        \"Reserved1\": \"35202-5171747-4\",\r\n        \"Reserved2\": \"\",\r\n        \"R3PAN\": \"4250108749566\",\r\n        \"R3TransactionAmount\": \"000000020000\",\r\n        \"R3TransmissionDateAndTime\": \"1103134400\",\r\n        \"R3STAN\": \"572159\",\r\n        \"R3TransactionDate\": \"1103\",\r\n        \"R3RRN\": \"100313572059\",\r\n        \"R3AccountNumberFrom\": \"009995538151459\",\r\n        \"R3AccountNumberTo\": \"0000020910000975\",\r\n        \"R3FromBankIMD\": \"998876\",\r\n        \"R3ToBankIMD\": \"221166\",\r\n        \"RecordAccountNumberTo\": \"0000020910000975\",\r\n        \"AccountTitleTo\": \"ZAHID HUSSAIN\",\r\n        \"RecordDataFromBankIMD\": \"998876\",\r\n        \"RecordToBankIMD\": \"221166\" ,\r\n        \"BankName1\": \"1link Model Bank\"\r\n    }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://10.0.142.4:7033/mpg/queueforwarding/",
+          "protocol": "http",
+          "host": [
+            "10",
+            "0",
+            "142",
+            "4"
+          ],
+          "port": "7033",
+          "path": [
+            "mpg",
+            "queueforwarding",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "raast-outgoing-payment",
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"meta_data\": {\r\n        \"method\": \"POST\",\r\n        \"trans_type\": \"ibft-payment\"\r\n    },\r\n    \"body\": {\r\n        \"TransactionAmount\": \"0000000010000\",\r\n        \"TransmissionDateAndTime\": \"1103134400\",\r\n        \"stan\": \"572159\",\r\n        \"Time\": \"134400\",\r\n        \"Date\": \"1103\",\r\n        \"FromBankIMD\": \"998876\",\r\n        \"rrn\": \"100313572059\",\r\n        \"AuthorizationIdentificationResponse\": \"124917\",\r\n        \"Location\": \"Test Store\",\r\n        \"City\": \"Karachi\",\r\n        \"State\": \"Sindh\",\r\n        \"ZipCode\": \"74200\",\r\n        \"AgentName\": \"Umair Sheikh\",\r\n        \"AgentCity\": \"Karachi\",\r\n        \"ADCLiteral\": \"Any Channel\",\r\n        \"BankName\": \"1link Model Bank\",\r\n        \"Country\": \"PK\",\r\n        \"PaymentDetail\": \"0251\",\r\n        \"AccountNumberFrom\": \"PK74HUG00009995538151459\",\r\n        \"AccountNumberTo\": \"PK23MBPK0000020910000975\",\r\n        \"ToBankIMD\": \"221166\",\r\n        \"PAN\": \"4250108749566\",\r\n        \"BeneficiaryBankName\": \"1link Model Bank\",\r\n        \"Reserved1\": \"\",\r\n        \"Reserved2\": \"\",\r\n        \"Reserved3\": \"\",\r\n        \"SenderName\": \"Leroy Green\",\r\n        \"SenderIBAN\": \"PK74HUG00009995538151459\",\r\n        \"AccountTitle\": \"ZAHID HUSSAIN\"\r\n    }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://10.0.142.4:7033/mpg/queueforwarding/",
+          "protocol": "http",
+          "host": [
+            "10",
+            "0",
+            "142",
+            "4"
+          ],
+          "port": "7033",
+          "path": [
+            "mpg",
+            "queueforwarding",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "auth-ria",
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json",
+            "type": "text",
+            "disabled": true
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"meta_data\": {\r\n        \"method\": \"POST\",\r\n        \"trans_type\": \"ibft-payment\"\r\n    },\r\n    \"body\": {\r\n        \"TransactionAmount\": \"0000000010000\",\r\n        \"TransmissionDateAndTime\": \"1103134400\",\r\n        \"stan\": \"572159\",\r\n        \"Time\": \"134400\",\r\n        \"Date\": \"1103\",\r\n        \"FromBankIMD\": \"998876\",\r\n        \"rrn\": \"100313572059\",\r\n        \"AuthorizationIdentificationResponse\": \"124917\",\r\n        \"Location\": \"Test Store\",\r\n        \"City\": \"Karachi\",\r\n        \"State\": \"Sindh\",\r\n        \"ZipCode\": \"74200\",\r\n        \"AgentName\": \"Umair Sheikh\",\r\n        \"AgentCity\": \"Karachi\",\r\n        \"ADCLiteral\": \"Any Channel\",\r\n        \"BankName\": \"1link Model Bank\",\r\n        \"Country\": \"PK\",\r\n        \"PaymentDetail\": \"0251\",\r\n        \"AccountNumberFrom\": \"PK74HUG00009995538151459\",\r\n        \"AccountNumberTo\": \"PK23MBPK0000020910000975\",\r\n        \"ToBankIMD\": \"221166\",\r\n        \"PAN\": \"4250108749566\",\r\n        \"BeneficiaryBankName\": \"1link Model Bank\",\r\n        \"Reserved1\": \"\",\r\n        \"Reserved2\": \"\",\r\n        \"Reserved3\": \"\",\r\n        \"SenderName\": \"Leroy Green\",\r\n        \"SenderIBAN\": \"PK74HUG00009995538151459\",\r\n        \"AccountTitle\": \"ZAHID HUSSAIN\"\r\n    }\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "http://10.0.142.4:7033/mpg/queueforwarding/",
+          "protocol": "http",
+          "host": [
+            "10",
+            "0",
+            "142",
+            "4"
+          ],
+          "port": "7033",
+          "path": [
+            "mpg",
+            "queueforwarding",
+            ""
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "exec": [
+          "const validateParams = (params) => {",
+          "  for (let i = 0; i < params.length; i++) {",
+          "    if (params[i] === null || params[i] === undefined) {",
+          "      params[i] = \"\";",
+          "    }",
+          "  }",
+          "};",
+          "",
+          "const prepareBodyString = (params) => {",
+          "  try {",
+          "    validateParams(params);",
+          "    let encoded = params.map((t) => encodeURIComponent(t));",
+          "    return encoded.join(\",\");",
+          "  } catch (err) {",
+          "    return null;",
+          "  }",
+          "};",
+          "",
+          "//ata-screening,wiPaysys,PaySys%401234,1,4440185744600,005010112347,112347,paysys@123 (make sha256)",
+          "//http://10.0.110.7:7033/nbpl/queueforwarding/ata-screening%2CwiPaysys%2CPaySys%25401234%2C1%2C1111111111111%2C123456789012%2C123456/bc06666b3ad936e1e3b0e74983a40c7c7e66de4f92aca5064887442747af69e4",
+          "const prepareSha256WithSignature = (params) => {",
+          "  try {",
+          "    validateParams(params);",
+          "    let encoded = params.map((t) => encodeURIComponent(t));",
+          "    const copy = [...encoded, \"paysys@123\"];",
+          "    return CryptoJS.SHA256(copy.join(\",\")).toString(CryptoJS.enc.Hex);",
+          "  } catch (err) {",
+          "    return null;",
+          "  }",
+          "};",
+          "",
+          "const prepareQueryStringWithSignature = (params) => {",
+          "  try {",
+          "    validateParams(params);",
+          "    let encoded = params.map((t) => encodeURIComponent(t));",
+          "    const copy = [...encoded, \"paysys@123\"];",
+          "",
+          "    return `${encodeURIComponent(encoded.join(\",\"))}/${CryptoJS.SHA256(",
+          "      copy.join(\",\")",
+          "    )}`;",
+          "  } catch (err) {",
+          "    console.error(",
+          "      \"Error prepareQueryStringWithSignature\",",
+          "      err.message.toString()",
+          "    );",
+          "    return null;",
+          "  }",
+          "};",
+          "",
+          "const origianlReqBody = JSON.parse(pm.request.body.raw);",
+          "console.log(\"origianlReqBody\", origianlReqBody)",
+          "",
+          "let metaData = origianlReqBody.meta_data;",
+          "let method = origianlReqBody.meta_data.method;",
+          "let reqBody = origianlReqBody.body;",
+          "",
+          "console.log(\"meta_data\",origianlReqBody.meta_data)",
+          "console.log(\"body\",origianlReqBody.body)",
+          "",
+          "const params = [metaData.trans_type, ...Object.values(reqBody)];",
+          "console.log(\"params\", params)",
+          "",
+          "let query = null;",
+          "let body = null;",
+          "",
+          "if(pm.request.method === \"POST\") {",
+          "\t body = prepareBodyString(params);",
+          "\t console.log(\"body\",body)",
+          "\t query = prepareSha256WithSignature(params);",
+          "\t console.log(\"query\",query)",
+          "}else {",
+          "\tquery = prepareQueryStringWithSignature(params);",
+          "}",
+          "",
+          "console.log(\"query params\", query)",
+          "console.log(\"body params\", body)",
+          "console.log(\"stringified body params\", JSON.stringify(body))",
+          "",
+          "",
+          "",
+          "if (pm.request.method === \"POST\") {",
+          "\t\tpm.request.url = pm.request.url + query;",
+          "    pm.request.body.update({",
+          "        mode: 'raw',",
+          "        raw: body,",
+          "        options: {",
+          "            raw: {",
+          "                language: 'json'",
+          "            }",
+          "        }",
+          "    });",
+          "} else if (pm.request.method === \"GET\") {",
+          "\t\t\tpm.request.url = pm.request.url + query;",
+          "\t\t\tpm.request.method = \"GET\"",
+          "\t\t\tconsole.log('sending requst to ', pm.request.url)",
+          "}",
+          "",
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "username",
+      "value": "wiPaysys"
+    },
+    {
+      "key": "password",
+      "value": "PaySys@1234"
+    }
+  ]
+}

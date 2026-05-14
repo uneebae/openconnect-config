@@ -1,0 +1,5 @@
+{
+  "statements": [
+    "INSERT INTO ws_config (base_url, type, service_name) VALUES ('http://localhost:3010/api/v1/openconnect', 'core-banking', 'OpenConnect Title Fetch')"
+  ]
+}

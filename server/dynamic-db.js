@@ -149,15 +149,28 @@ async function executeSql(statements) {
   if (!activeConnection) throw new Error('No database connected');
 
   const results = [];
+  let lastInsertId = null;
 
   // Use transaction for safety
   if (activeConnection.type === 'mssql') {
     const transaction = new sql.Transaction(activeConnection.pool);
     await transaction.begin();
     try {
-      for (const stmt of statements) {
+      for (let i = 0; i < statements.length; i++) {
+        let stmt = statements[i];
+        // Replace {LAST_INSERT_ID} with the actual ID from previous INSERT (simple string replacement)
+        if (lastInsertId !== null && stmt.includes('{LAST_INSERT_ID}')) {
+          const idString = String(lastInsertId);
+          stmt = stmt.split('{LAST_INSERT_ID}').join(idString);
+        } else if (lastInsertId === null && stmt.includes('{LAST_INSERT_ID}')) {
+          throw new Error('Cannot use {LAST_INSERT_ID} in first statement');
+        }
         const result = await executeSingleStatement(stmt, transaction);
-        if (result) results.push(result);
+        if (result) {
+          results.push(result);
+          // Only capture lastInsertId from the FIRST insert (parent row)
+          if (lastInsertId === null && result.lastInsertId) lastInsertId = result.lastInsertId;
+        }
       }
       await transaction.commit();
     } catch (err) {
@@ -169,9 +182,21 @@ async function executeSql(statements) {
     const client = await activeConnection.pool.connect();
     try {
       await client.query('BEGIN');
-      for (const stmt of statements) {
+      for (let i = 0; i < statements.length; i++) {
+        let stmt = statements[i];
+        // Replace {LAST_INSERT_ID} with the actual ID from previous INSERT (simple string replacement)
+        if (lastInsertId !== null && stmt.includes('{LAST_INSERT_ID}')) {
+          const idString = String(lastInsertId);
+          stmt = stmt.split('{LAST_INSERT_ID}').join(idString);
+        } else if (lastInsertId === null && stmt.includes('{LAST_INSERT_ID}')) {
+          throw new Error('Cannot use {LAST_INSERT_ID} in first statement');
+        }
         const result = await executeSingleStatementPg(stmt, client);
-        if (result) results.push(result);
+        if (result) {
+          results.push(result);
+          // Only capture lastInsertId from the FIRST insert (parent row)
+          if (lastInsertId === null && result.lastInsertId) lastInsertId = result.lastInsertId;
+        }
       }
       await client.query('COMMIT');
     } catch (err) {
@@ -185,9 +210,21 @@ async function executeSql(statements) {
     const conn = await activeConnection.pool.getConnection();
     try {
       await conn.beginTransaction();
-      for (const stmt of statements) {
+      for (let i = 0; i < statements.length; i++) {
+        let stmt = statements[i];
+        // Replace {LAST_INSERT_ID} with the actual ID from previous INSERT (simple string replacement)
+        if (lastInsertId !== null && stmt.includes('{LAST_INSERT_ID}')) {
+          const idString = String(lastInsertId);
+          stmt = stmt.split('{LAST_INSERT_ID}').join(idString);
+        } else if (lastInsertId === null && stmt.includes('{LAST_INSERT_ID}')) {
+          throw new Error('Cannot use {LAST_INSERT_ID} in first statement');
+        }
         const result = await executeSingleStatementMysql(stmt, conn);
-        if (result) results.push(result);
+        if (result) {
+          results.push(result);
+          // Only capture lastInsertId from the FIRST insert (parent row)
+          if (lastInsertId === null && result.lastInsertId) lastInsertId = result.lastInsertId;
+        }
       }
       await conn.commit();
     } catch (err) {
@@ -263,13 +300,24 @@ async function executeSingleStatement(stmt, transaction) {
   if (!v) return null;
   const { trimmed, upper } = v;
 
-  const request = new sql.Request(transaction);
-  const result = await request.query(trimmed);
-
   if (upper.startsWith('SELECT')) {
+    const request = new sql.Request(transaction);
+    const result = await request.query(trimmed);
     return { sql: trimmed.substring(0, 80), type: 'SELECT', rows: result.recordset };
   } else {
-    return { sql: trimmed.substring(0, 80), type: 'INSERT', rowsAffected: result.rowsAffected[0] };
+    // For INSERT, combine with SCOPE_IDENTITY() in a single batch to reliably capture the ID
+    const request = new sql.Request(transaction);
+    const result = await request.query(trimmed + '; SELECT SCOPE_IDENTITY() AS lastId');
+    let lastInsertId = null;
+    // SCOPE_IDENTITY() result is in the last recordset
+    const recordsets = result.recordsets;
+    if (recordsets && recordsets.length > 0) {
+      const lastRecordset = recordsets[recordsets.length - 1];
+      if (lastRecordset && lastRecordset[0] && lastRecordset[0].lastId != null) {
+        lastInsertId = Number(lastRecordset[0].lastId);
+      }
+    }
+    return { sql: trimmed.substring(0, 80), type: 'INSERT', rowsAffected: result.rowsAffected[0], lastInsertId };
   }
 }
 
@@ -284,7 +332,18 @@ async function executeSingleStatementPg(stmt, client) {
   if (upper.startsWith('SELECT')) {
     return { sql: trimmed.substring(0, 80), type: 'SELECT', rows: result.rows };
   } else {
-    return { sql: trimmed.substring(0, 80), type: 'INSERT', rowsAffected: result.rowCount };
+    // For INSERT, try to get the last inserted ID using currval() or lastval()
+    let lastInsertId = null;
+    try {
+      // PostgreSQL: Try to get the last sequence value (works for SERIAL columns)
+      const idResult = await client.query('SELECT lastval() as id');
+      if (idResult.rows && idResult.rows[0] && idResult.rows[0].id) {
+        lastInsertId = Number(idResult.rows[0].id);
+      }
+    } catch (err) {
+      // If lastval fails, just continue without it
+    }
+    return { sql: trimmed.substring(0, 80), type: 'INSERT', rowsAffected: result.rowCount, lastInsertId };
   }
 }
 
@@ -299,7 +358,17 @@ async function executeSingleStatementMysql(stmt, conn) {
   if (upper.startsWith('SELECT')) {
     return { sql: trimmed.substring(0, 80), type: 'SELECT', rows: result };
   } else {
-    return { sql: trimmed.substring(0, 80), type: 'INSERT', rowsAffected: result.affectedRows };
+    // For INSERT, try to get the last inserted ID using LAST_INSERT_ID()
+    let lastInsertId = null;
+    try {
+      const [idResult] = await conn.query('SELECT LAST_INSERT_ID() as id');
+      if (idResult && idResult[0] && idResult[0].id) {
+        lastInsertId = Number(idResult[0].id);
+      }
+    } catch (err) {
+      // If LAST_INSERT_ID fails, just continue without it
+    }
+    return { sql: trimmed.substring(0, 80), type: 'INSERT', rowsAffected: result.affectedRows, lastInsertId };
   }
 }
 
@@ -313,4 +382,5 @@ export {
   getTable,
   executeSql,
   testConnection,
+  queryRows,
 };

@@ -1,0 +1,162 @@
+### ═══════════════════════════════════════════════════════════════
+### OpenConnect Config — Postman Collection Testing via Backend
+### 
+### This file demonstrates using your Postman collection format
+### through the OpenConnect Config backend's passthrough endpoint
+### ═══════════════════════════════════════════════════════════════
+
+@backendUrl = http://localhost:3002
+@ocCoreUrl = http://10.0.142.4:7033/mpg/queueforwarding/
+
+### Backend Health Check
+GET {{backendUrl}}/api/health
+
+###
+
+### Test 1: Title Fetch (via passthrough)
+### Forwards your Postman collection format to OC Core
+POST {{backendUrl}}/api/oc-core/passthrough
+Content-Type: application/json
+
+{
+  "endpoint": "{{ocCoreUrl}}",
+  "method": "GET",
+  "body": {
+    "meta_data": {
+      "method": "POST",
+      "trans_type": "title-fetch"
+    },
+    "body": {
+      "TransactionAmount": "000000002000",
+      "TransmissionDateAndTime": "0220104400",
+      "stan": "218998",
+      "Time": "104400",
+      "Date": "0220",
+      "FromBankIMD": "639357",
+      "rrn": "182486216659",
+      "Location": "Test Store",
+      "City": "Karachi",
+      "State": "Sindh",
+      "ZipCode": "74200",
+      "AgentName": "Bank Islamic",
+      "AgentCity": "Remit Channel",
+      "ADCLiteral": "Any Channel",
+      "BankName": "Bank Islamic",
+      "Country": "PK",
+      "AccountNumberTo": "PK66MEZN00015401065442903",
+      "ToBankIMD": "627873",
+      "PAN": "0000000000000"
+    }
+  },
+  "timeoutMs": 30000
+}
+
+###
+
+### Test 2: IBFT Payment (via passthrough)
+POST {{backendUrl}}/api/oc-core/passthrough
+Content-Type: application/json
+
+{
+  "endpoint": "{{ocCoreUrl}}",
+  "method": "GET",
+  "body": {
+    "meta_data": {
+      "method": "POST",
+      "trans_type": "ibft-payment"
+    },
+    "body": {
+      "TransactionAmount": "000000013500",
+      "TransmissionDateAndTime": "1224133520",
+      "stan": "619162",
+      "Time": "133520",
+      "Date": "1224",
+      "FromBankIMD": "639357",
+      "rrn": "100319615162",
+      "AuthorizationIdentificationResponse": "233964",
+      "Location": "Test Store",
+      "City": "Karachi",
+      "State": "Sindh",
+      "ZipCode": "74200",
+      "AgentName": "Fahim",
+      "AgentCity": "Karachi",
+      "ADCLiteral": "Any Channel",
+      "BankName": "1link Model Bank",
+      "Country": "PK",
+      "PaymentDetail": "0401",
+      "AccountNumberFrom": "102700659510201",
+      "AccountNumberTo": "12345678911112",
+      "ToBankIMD": "221166",
+      "PAN": "5311990001869341",
+      "BeneficiaryBankName": "1link Model Bank",
+      "Reserved1": "46501-0710145-2               42501-0510145-10586Khurram Asif             ",
+      "Reserved2": "",
+      "Reserved3": "",
+      "SenderName": "Leroy Green",
+      "SenderIBAN": "12345678911112",
+      "AccountTitle": "ZAHID HUSSAIN"
+    }
+  },
+  "timeoutMs": 30000
+}
+
+###
+
+### Test 3: IBFT Inquiry (via passthrough)
+POST {{backendUrl}}/api/oc-core/passthrough
+Content-Type: application/json
+
+{
+  "endpoint": "{{ocCoreUrl}}",
+  "method": "GET",
+  "body": {
+    "meta_data": {
+      "method": "POST",
+      "trans_type": "ibft-inquiry"
+    },
+    "body": {
+      "TransactionAmount": "000000000200",
+      "TransmissionDateAndTime": "1121110000",
+      "stan": "509139",
+      "TransactionTime": "134400",
+      "TransactionDate": "1121",
+      "ConversionDate": "",
+      "FromBankIMD": "998876",
+      "rrn": "100313509139",
+      "AuthorizationIdentificationResponse": "895578",
+      "Location": "Test Store",
+      "City": "Karachi",
+      "State": "Sindh",
+      "ZipCode": "74200",
+      "AgentName": "Umair Sheikh",
+      "ADCLiteral": "ADC Literal",
+      "AgentCity": "Any Channel",
+      "BankName": "1link Model Bank",
+      "Country": "PK",
+      "AccountNumberFrom": "PK74ABPA0002000001100111",
+      "AccountNumberTo": "PK23MBPK0000020910000975",
+      "ToBankIMD": "221166",
+      "PAN": "4250108749566",
+      "Reserved1": "35202-5171747-4",
+      "Reserved2": "",
+      "R3PAN": "4250108749566",
+      "R3TransactionAmount": "000000020000",
+      "R3TransmissionDateAndTime": "1103134400",
+      "R3STAN": "572159",
+      "R3TransactionDate": "1103",
+      "R3RRN": "100313572059",
+      "R3AccountNumberFrom": "009995538151459",
+      "R3AccountNumberTo": "0000020910000975",
+      "R3FromBankIMD": "998876",
+      "R3ToBankIMD": "221166",
+      "RecordAccountNumberTo": "0000020910000975",
+      "AccountTitleTo": "ZAHID HUSSAIN",
+      "RecordDataFromBankIMD": "998876",
+      "RecordToBankIMD": "221166",
+      "BankName1": "1link Model Bank"
+    }
+  },
+  "timeoutMs": 30000
+}
+
+###

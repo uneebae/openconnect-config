@@ -57,21 +57,22 @@ function initSchema() {
       token_configuration_id INTEGER,
       token_request_id INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (config_id) REFERENCES ws_config(id)
+      FOREIGN KEY (config_id) REFERENCES ws_config(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS ws_response_definition (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      config_id INTEGER,
+      config_id INTEGER NOT NULL,
       match_code TEXT NOT NULL,
       our_code TEXT NOT NULL,
       our_description TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (config_id) REFERENCES ws_config(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS ws_req_param_details (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      tran_id INTEGER NOT NULL,
+      tran_id INTEGER NOT NULL UNIQUE,
       tran_type TEXT NOT NULL,
       queue_in TEXT,
       queue_type TEXT,
@@ -95,7 +96,8 @@ function initSchema() {
       is_batch INTEGER DEFAULT 0,
       is_escape INTEGER DEFAULT 0,
       param_priority INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (tran_id) REFERENCES ws_req_param_details(tran_id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS saved_configs (
@@ -183,6 +185,8 @@ function seedDemoData() {
 
 function resetDb() {
   const db = getDb();
+  // Temporarily disable FK constraints to allow deletion in any order
+  db.pragma('foreign_keys = OFF');
   db.exec(`
     DELETE FROM tran_req_map;
     DELETE FROM ws_response_definition;
@@ -191,6 +195,8 @@ function resetDb() {
     DELETE FROM ws_token_config;
     DELETE FROM ws_config;
   `);
+  // Re-enable FK constraints
+  db.pragma('foreign_keys = ON');
   db.close();
 }
 
